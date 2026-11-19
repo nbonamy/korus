@@ -46,17 +46,18 @@ describe('RemoteEngineConnections', () => {
     const wrapper = mount(RemoteEngineConnections, { props: { connection } });
     await flushPromises();
     expect(api.getProviderSetup).toHaveBeenCalledExactlyOnceWith(connection.id);
-    expect(wrapper.get('a').attributes('href')).toBe(setup.capabilities.installation.instructionsUrl);
-    expect(wrapper.findAll('button').some(button => button.text() === 'Install')).toBe(false);
+    const clickInstall = () => wrapper.findAll('button').find(button => button.text() === 'Install')!.trigger('click');
+    await clickInstall();
+    expect(window.open).toHaveBeenCalledWith(setup.capabilities.installation.instructionsUrl, '_blank', 'noopener,noreferrer');
+    expect(api.installProvider).not.toHaveBeenCalled();
     api.getProviderSetup.mockRejectedValueOnce(new Error('Temporary metadata failure'));
-    await wrapper.get('button[aria-label="Check again"]').trigger('click');
-    await flushPromises();
-    expect(wrapper.findAll('button').some(button => button.text() === 'Install')).toBe(false);
-    expect(wrapper.get('a').attributes('href')).toBe(setup.capabilities.installation.instructionsUrl);
+    await choose(wrapper, 'Refresh status');
+    await clickInstall();
+    expect(window.open).toHaveBeenCalledTimes(2);
+    expect(api.installProvider).not.toHaveBeenCalled();
     api.getProviderSetup.mockResolvedValue([{ ...setup, capabilities: { ...setup.capabilities, installation: { ...setup.capabilities.installation, allowControllerInstall: true } } }]);
-    await wrapper.get('button[aria-label="Check again"]').trigger('click');
-    await flushPromises();
-    await wrapper.findAll('button').find(button => button.text() === 'Install')!.trigger('click');
+    await choose(wrapper, 'Refresh status');
+    await clickInstall();
     await flushPromises();
     expect(api.installProvider).toHaveBeenCalledExactlyOnceWith('claude', connection.id);
     expect(api.authenticateProvider).not.toHaveBeenCalled();
@@ -71,19 +72,21 @@ describe('RemoteEngineConnections', () => {
     await flushPromises();
     expect(api.getProviderConnections).toHaveBeenCalledWith(connection.id);
     await wrapper.findAll('button').find(button => button.text() === 'Connect')!.trigger('click');
-    expect(wrapper.get('[role="alert"]').text()).toContain('agent login on the remote host');
-    expect(api.authenticateProvider).not.toHaveBeenCalled();
-    api.getProviderConnections.mockResolvedValue([{ provider: 'cursor', installed: true, connected: false, checking: false,
-      authentication: { kind: 'cursor', connected: false, state: { loggedIn: false, homePath: '/remote/.cursor', supported: false, error: 'Update Cursor CLI to 2026.10.08 or newer.' } } }]);
-    await wrapper.get('.remote-engine-connections > button').trigger('click');
     await flushPromises();
-    expect(wrapper.text()).toContain('Update Cursor CLI to 2026.10.08');
+    expect(document.body.querySelector('[role="dialog"] code')?.textContent).toContain('NO_OPEN_BROWSER=1 agent login');
+    expect(api.authenticateProvider).not.toHaveBeenCalled();
+    api.authenticateProvider.mockResolvedValue({ kind: 'cursor', connected: false, state: { loggedIn: false, homePath: '/remote/.cursor', supported: false, error: 'Update Cursor CLI to 2026.10.08 or newer.' } });
+    (document.body.querySelector('[role="dialog"] .app-button--primary') as HTMLButtonElement).click();
+    await flushPromises();
+    expect(api.authenticateProvider).toHaveBeenCalledExactlyOnceWith('cursor', 'check', { remoteConnectionId: connection.id });
+    expect(document.body.querySelector('[role="dialog"] [role="alert"]')?.textContent).toContain('Update Cursor CLI to 2026.10.08');
     wrapper.unmount();
   });
 
   it('keeps Antigravity sign-in native without offering unsupported remote upgrades', async () => {
     const { api } = createClientApiMock();
     api.getProviderConnections.mockResolvedValue([{ provider: 'antigravity', installed: true, connected: false, checking: false }]);
+    api.getProviderSetup.mockResolvedValue([{ provider: 'antigravity', installed: true, locked: false, isolated: true, shareSkills: false, homePath: "/remote/Korus's Antigravity" }]);
     configureAppClient({ platform: 'desktop', api });
     const wrapper = mount(RemoteEngineConnections, { props: { connection } });
     await flushPromises();
@@ -91,8 +94,15 @@ describe('RemoteEngineConnections', () => {
     expect(wrapper.find('[aria-label="Check for updates"]').exists()).toBe(false);
     expect(api.getProviderUpdate).not.toHaveBeenCalled();
     await wrapper.get('.form-row__control button').trigger('click');
-    expect(wrapper.get('[role="alert"]').text()).toContain('Sign in to Antigravity on the remote host');
+    await flushPromises();
+    expect(document.body.querySelector('[role="dialog"] code')?.textContent).toContain("agy acp --login --gemini-dir '/remote/Korus'\\''s Antigravity'");
     expect(api.authenticateProvider).not.toHaveBeenCalled();
+    api.authenticateProvider.mockResolvedValue({ kind: 'antigravity', connected: true, state: { loggedIn: true, homePath: '/remote/.gemini' } });
+    api.getProviderConnections.mockResolvedValue([{ provider: 'antigravity', installed: true, connected: true, checking: false }]);
+    (document.body.querySelector('[role="dialog"] .app-button--primary') as HTMLButtonElement).click();
+    await flushPromises();
+    expect(api.authenticateProvider).toHaveBeenCalledExactlyOnceWith('antigravity', 'check', { remoteConnectionId: connection.id });
+    expect(wrapper.get('.form-row').text()).toContain('Connected');
     wrapper.unmount();
   });
   it('keeps the connected account on one row and routes refresh and upgrade actions to its host', async () => {
@@ -140,17 +150,23 @@ describe('RemoteEngineConnections', () => {
     wrapper.unmount();
   });
 
-  it.each(['codex', 'claude'] as const)('installs %s on its owning remote host and refreshes its availability without signing in', async (provider) => {
+  it.each([
+    ['codex', true], ['claude', true], ['cursor', undefined], ['antigravity', undefined],
+  ] as const)('installs %s on its owning remote host and refreshes its availability without signing in', async (provider, allowControllerInstall) => {
     const { api } = createClientApiMock();
     const engine = { provider: provider, installed: false, connected: false, checking: false };
     api.getProviderConnections.mockResolvedValueOnce([engine]).mockResolvedValue([{ ...engine, installed: true }]);
-    api.installProvider.mockResolvedValue({ provider: 'antigravity', installed: true, locked: false, isolated: true, shareSkills: false, homePath: '/remote/app/antigravity-home' });
+    const setup = { provider, installed: false, locked: false, isolated: false, shareSkills: false, homePath: '/remote/engine',
+      capabilities: { homeSelection: false, skillSharing: false, installation: { managed: false, allowControllerInstall } } };
+    api.getProviderSetup.mockResolvedValue([setup]);
+    api.installProvider.mockResolvedValue({ ...setup, installed: true });
     configureAppClient({ platform: 'desktop', api });
     const wrapper = mount(RemoteEngineConnections, { props: { connection } });
     await flushPromises();
     await wrapper.findAll('button').find(button => button.text() === 'Install')!.trigger('click');
     await flushPromises();
     expect(api.installProvider).toHaveBeenCalledExactlyOnceWith(provider, 'wall-e');
+    expect(window.open).not.toHaveBeenCalled();
     expect(api.getProviderConnections).toHaveBeenLastCalledWith('wall-e');
     expect(wrapper.find('.provider-install-actions').exists()).toBe(false);
     expect(wrapper.get('.form-row__control button').text()).toBe('Connect');

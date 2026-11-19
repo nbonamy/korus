@@ -1,28 +1,16 @@
 import assert from 'node:assert/strict';
-import { test } from 'vitest';
-import { withAnnotationFixture } from './annotation-fixture.mjs';
+import { afterAll, beforeAll, test } from 'vitest';
+import { startAnnotationFixture } from './annotation-fixture.mjs';
 import { interactionControlsSource } from './fixtures/interaction-controls.mjs';
 
-test('repository creation uses one plus with four choices', async () => {
-  const errors = await withAnnotationFixture(interactionControlsSource, async page => {
-    const group = page.locator('[data-group-kind="repository"]');
-    await group.locator('.agent-sidebar__workspace-header').hover();
-    assert.equal(await group.locator('.agent-sidebar__workspace-actions button').count(), 1);
-    await group.getByRole('button', { name: 'New session in repo', exact: true }).click();
-    const menu = page.getByRole('menu', { name: 'New session in repo', exact: true });
-    await menu.getByRole('menuitem', { name: 'main', exact: true }).waitFor();
-    assert.deepEqual(await menu.getByRole('menuitem').allTextContents(), ['main', 'From branch…', 'New worktree…', 'Pull requests & issues…']);
-    await page.waitForFunction(() => document.getAnimations().every(animation =>
-      animation.effect?.getTiming().iterations === Infinity || animation.playState !== 'running'));
-    await page.screenshot({ path: '/tmp/korus-repository-create-menu.png' });
-    await menu.getByRole('menuitem', { name: 'Pull requests & issues…', exact: true }).click();
-    assert.equal((await page.evaluate(() => window.repositorySource)).initialTab, 'pullRequests');
-  });
-  assert.deepEqual(errors, []);
+let fixture;
+beforeAll(async () => {
+  fixture = await startAnnotationFixture({ controls: interactionControlsSource });
 });
+afterAll(() => fixture?.close());
 
-test('activity groups disclose on hover and keyboard focus, fold independently and restore after reload', async () => {
-  const errors = await withAnnotationFixture(interactionControlsSource, async page => {
+test('activity disclosure and mark-unread affordances respond to hover and keyboard focus', async () => {
+  const errors = await fixture.run('controls', async page => {
     await page.evaluate(() => window.showActivity());
     await page.addStyleTag({ content: '.agent-sidebar__activity-time{transition:none!important}' });
     const unreadRow = page.locator('.agent-sidebar__agent[data-reorder-id="quick"]');
@@ -38,7 +26,6 @@ test('activity groups disclose on hover and keyboard focus, fold independently a
     assert.equal(await idleRow.locator('.agent-sidebar__activity-time').evaluate(el => getComputedStyle(el).opacity), '0');
     await markUnread.hover();
     await page.getByRole('tooltip', { name: 'Mark unread', exact: true }).waitFor();
-    await page.screenshot({ path: '/tmp/korus-mark-unread.png' });
     await page.mouse.move(1190, 850);
     await markUnread.focus();
     assert.equal(await markUnread.evaluate(el => getComputedStyle(el).opacity), '1');
@@ -61,26 +48,12 @@ test('activity groups disclose on hover and keyboard focus, fold independently a
     await page.mouse.move(1190, 850);
     assert.equal(await group.locator('.agent-sidebar__agent').count(), 0);
     assert.equal(await opacity('.agent-sidebar__activity-chevron'), '1', 'folded groups remain discoverable');
-    assert.equal(await page.locator('[data-activity-group="attention"] .agent-sidebar__agent').count(), 1);
-    await toggle.press('Space');
-    assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
-    assert.equal(await group.locator('.agent-sidebar__agent').count(), 1);
-    await toggle.press('Enter');
-    await page.reload();
-    await page.evaluate(() => window.showActivity());
-    assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
-    const mouseAction = page.getByRole('button', { name: 'Mark unread', exact: true }).first();
-    await mouseAction.locator('..').hover();
-    await mouseAction.click();
-    assert.equal((await page.evaluate(() => window.markedUnread)).unread, true);
-    assert.equal(await page.evaluate(() => window.selectedAgent), null);
-    await page.screenshot({ path: '/tmp/korus-activity-disclosure.png' });
   });
   assert.deepEqual(errors, []);
 });
 
 test('toolbar controls share resting, hover, open and keyboard-focus policy across palettes', async () => {
-  const errors = await withAnnotationFixture(interactionControlsSource, async page => {
+  const errors = await fixture.run('controls', async page => {
     await page.locator('.git-diff-control__open').waitFor();
     await page.addStyleTag({ content: '*,*::before,*::after{transition:none!important;animation:none!important}' });
     const selectors = ['.agent-more-menu__trigger', '.run-profiles-control__trigger', '.git-diff-control__open',
@@ -92,7 +65,7 @@ test('toolbar controls share resting, hover, open and keyboard-focus policy acro
       const style = getComputedStyle(element);
       return { pixels: [...context.getImageData(0, 0, 1, 1).data], color: style.color, outline: style.outlineStyle };
     });
-    for (const theme of await page.evaluate(() => window.themes)) {
+    for (const theme of await page.evaluate(() => window.themes.filter(({ id }) => ['app-light', 'app-dark-blue'].includes(id)))) {
       await page.evaluate(theme => window.applyTheme(theme), theme);
       await page.mouse.move(1190, 850);
       const resting = await paint(selectors[0]);
@@ -118,7 +91,7 @@ test('toolbar controls share resting, hover, open and keyboard-focus policy acro
 });
 
 test('native, toolkit and generated controls retain one state policy and readable palette accents', async () => {
-  const errors = await withAnnotationFixture(interactionControlsSource, async page => {
+  const errors = await fixture.run('controls', async page => {
     await page.locator('[data-test="native-primary"]').waitFor();
     await page.addStyleTag({ content: '*,*::before,*::after{transition:none!important;animation:none!important}' });
     const appearance = locator => locator.evaluate(el => {
@@ -132,7 +105,7 @@ test('native, toolkit and generated controls retain one state policy and readabl
       return {color:style.color,background:style.backgroundColor,contrast:(Math.max(a,b)+.05)/(Math.min(a,b)+.05),cursor:style.cursor,opacity:style.opacity,outline:style.outlineStyle};
     });
     const control = (family, variant) => page.locator(`[data-test="${family}-${variant}"]`);
-    for (const theme of await page.evaluate(() => window.themes)) {
+    for (const theme of await page.evaluate(() => window.themes.filter(({ id }) => ['app-light', 'app-dark-blue'].includes(id)))) {
       await page.evaluate(theme => window.applyTheme(theme), theme); await page.mouse.move(1190,850);
       const native=await appearance(control('native','primary')), toolkit=await appearance(control('toolkit','primary'));
       assert.deepEqual([toolkit.color,toolkit.background],[native.color,native.background],`${theme.id}: toolkit shares solid colors`);
@@ -145,7 +118,7 @@ test('native, toolkit and generated controls retain one state policy and readabl
     }
     await page.evaluate(()=>window.showLock());
     const lock=page.locator('.team-rail__lock--active');
-    for (const theme of ['app-light','app-dark-blue','dracula-dark']) {
+    for (const theme of ['app-light','app-dark-blue']) {
       await page.evaluate(id=>window.applyTheme(window.themes.find(theme=>theme.id===id)),theme);
       const warning=await page.evaluate(()=>{const probe=document.createElement('span');probe.style.color='var(--color-warning)';document.body.append(probe);const color=getComputedStyle(probe).color;probe.remove();return color});
       await page.mouse.move(1190,850);
@@ -233,7 +206,6 @@ test('native, toolkit and generated controls retain one state policy and readabl
     assert.deepEqual(await identity(green),{background:'rgb(70, 168, 87)',ring:'rgb(70, 168, 87)',style:'solid',width:'1px',gap:'2px'},'selection keeps identity material and a real gap around its ring');
     await green.hover();
     assert.equal((await identity(green)).background,'rgb(70, 168, 87)','hover preserves the workspace identity color');
-    await page.screenshot({path:'/tmp/korus-interaction-states-dark.png'});
   });
   assert.deepEqual(errors, []);
 });

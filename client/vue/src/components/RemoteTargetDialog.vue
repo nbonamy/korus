@@ -71,12 +71,12 @@ import { NetworkIcon } from '../shared/icons/app-icons';
 import ProviderModelSelector from './ProviderModelSelector.vue';
 import HostSelector from './HostSelector.vue';
 import GitOperationFeedback from './GitOperationFeedback.vue';
-import type { RemoteCheckout } from './use-remote-target';
+import type { RemoteCheckout, RemoteTargetRequest } from './use-remote-target';
 
 const props = defineProps<{
   visible: boolean;
   repositoryName: string;
-  action: 'main' | 'new-worktree';
+  action: RemoteTargetRequest['action'];
   connections: RemoteConnection[];
   checkouts: Record<string, RemoteCheckout>;
   canConfirm: boolean;
@@ -94,7 +94,7 @@ defineEmits<{
 const selectedId = defineModel<string>('selectedId', { default: '' });
 const selection = defineModel<ExecutionSelection | undefined>('selection');
 const { t } = useI18n();
-const title = computed(() => t(props.action === 'main' ? 'remoteTarget.openTitle' : 'remoteTarget.worktreeTitle', { repository: props.repositoryName }));
+const title = computed(() => t(props.action === 'new-worktree' ? 'remoteTarget.worktreeTitle' : 'remoteTarget.openTitle', { repository: props.repositoryName }));
 const modelsError = ref<string | null>(null);
 const modelsLoading = ref(false);
 
@@ -116,10 +116,9 @@ const progress = computed(() => {
   return null;
 });
 
-// A worktree continues in its own dialog, so it moves on rather than opens.
 const confirmLabel = computed(() => {
   const clones = props.checkouts[selectedId.value]?.state === 'missing';
-  if (props.action === 'new-worktree') return t(clones ? 'remoteTarget.cloneAndContinue' : 'remoteTarget.next');
+  if (props.action !== 'main') return t(clones ? 'remoteTarget.cloneAndContinue' : 'remoteTarget.next');
   return t(clones ? 'remoteTarget.cloneAndOpen' : 'remoteTarget.open');
 });
 

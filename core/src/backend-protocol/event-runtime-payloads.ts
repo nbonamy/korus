@@ -120,28 +120,6 @@ function expectRateLimits(value: unknown, path: string): void {
   );
 }
 
-function expectDevicePairingStatus(value: unknown, path: string): void {
-  expectRecord(value, path);
-  expectLiteral(
-    value.status,
-    ['disabled', 'connecting', 'connected', 'errored'],
-    `${path}.status`,
-  );
-  expectOptional(value, 'serverName', path, expectString);
-  expectOptional(value, 'installationId', path, expectString);
-  expectOptional(value, 'environmentId', path, (candidate, candidatePath) =>
-    expectNullable(candidate, candidatePath, expectString),
-  );
-  expectOptional(
-    value,
-    'allowRemoteControl',
-    path,
-    (candidate, candidatePath) =>
-      expectNullable(candidate, candidatePath, expectBoolean),
-  );
-  expectOptional(value, 'detail', path, expectString);
-}
-
 function expectModel(value: unknown, path: string): void {
   expectRecord(value, path);
   expectString(value.id, `${path}.id`);
@@ -364,7 +342,6 @@ export const runtimePayloadValidators = {
   'provider.statusChanged': expectProviderRuntimeStatus,
   'snapshot.updated': expectAppSnapshot,
   'account.rateLimitsUpdated': expectRateLimits,
-  'remoteControl.statusChanged': expectDevicePairingStatus,
   'models.changed': (value, path) => {
     expectRecord(value, path);
     expectArray(value.models, `${path}.models`, expectModel);

@@ -4,19 +4,10 @@ import { ElMessageBox } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RemoteConnection, SourceFolderListInput } from '@workspace/core/contracts';
 import type { CompanionControl } from '@workspace/core/companion-protocol';
-import { codexPairingUrl } from '../../device-pairing';
 import { configureAppClient } from '../../platform-api';
 import { createClientApiMock } from '../../../tests/support/client-api-mock';
 import SettingsConnectionsPanel from '../SettingsConnectionsPanel.vue';
 const installedCodexVersion = '0.159.3';
-
-describe('codexPairingUrl', () => {
-  it('wraps the opaque code in the ChatGPT Codex pairing deep link', () => {
-    expect(codexPairingUrl('opaque code/+')).toBe(
-      'https://chatgpt.com/codex/pair?pairing_code=opaque+code%2F%2B',
-    );
-  });
-});
 
 async function expandAll(wrapper: ReturnType<typeof mount>) {
   for (const toggle of wrapper.findAll('.settings-connections-panel__identity')) {
@@ -32,35 +23,11 @@ describe('SettingsConnectionsPanel', () => {
     document.body.innerHTML = '';
   });
 
-  it('updates the remote-access keep-awake setting', async () => {
-    const updateSettings = vi.fn().mockResolvedValue(undefined);
-    const wrapper = mount(SettingsConnectionsPanel, {
-      props: {
-        settings: { preventSleepWhenRemoteAccessEnabled: true },
-        updateSettings,
-        getRemoteControlStatus: async () => ({ status: 'connected' }),
-      },
-      global: {
-        },
-    });
-    await flushPromises();
-
-    await switchWithLabel(wrapper, 'Keep this Mac awake').vm.$emit('update:modelValue', false);
-
-    expect(wrapper.text()).toContain('Keep this Mac awake');
-    expect(wrapper.text()).toContain('Display sleep and automatic locking follow your system settings.');
-    expect(updateSettings).toHaveBeenCalledWith({
-      general: {
-        preventSleepWhenRemoteAccessEnabled: false,
-      },
-    });
-  });
-
   it('accepts the host companion control function without a prop type warning', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const companionControl = vi.fn(async () => ({ status: { enabled: false } }) as never);
     const wrapper = mount(SettingsConnectionsPanel, {
-      props: { getRemoteControlStatus: async () => ({ status: 'connected' }), companionControl },
+      props: { companionControl },
     });
     await flushPromises();
 
@@ -92,19 +59,6 @@ describe('SettingsConnectionsPanel', () => {
     await flushPromises();
     expect(keepAwake().exists()).toBe(false);
     wrapper.unmount();
-  });
-
-  it('hides the remote-access keep-awake setting while device connections are disabled', async () => {
-    const wrapper = mount(SettingsConnectionsPanel, {
-      props: {
-        getRemoteControlStatus: async () => ({ status: 'disabled' }),
-      },
-      global: {
-        },
-    });
-    await flushPromises();
-
-    expect(wrapper.text()).not.toContain('Keep this Mac awake');
   });
 
   it('lists saved remote connections and exposes row actions', async () => {
@@ -386,105 +340,7 @@ describe('SettingsConnectionsPanel', () => {
     expect(wrapper.findAll('button').some(button => button.text().includes('Set up'))).toBe(true);
     wrapper.unmount();
   });
-
-  it('pairs and revokes Codex mobile devices', async () => {
-    vi.useFakeTimers();
-    const session = {
-      pairingCode: 'opaque-pairing-payload',
-      manualPairingCode: 'ABCD-EFGH',
-      environmentId: 'environment-1',
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
-    };
-    const getRemoteControlStatus = vi.fn().mockResolvedValue({
-      status: 'connected',
-      serverName: `${product.name}`,
-      installationId: 'installation-1',
-      environmentId: 'environment-1',
-      allowRemoteControl: true,
-    });
-    const startDevicePairing = vi.fn().mockResolvedValue(session);
-    const checkDevicePairing = vi.fn().mockResolvedValue(true);
-    const listPairedDevices = vi.fn()
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{
-        clientId: 'client-1',
-        displayName: 'Nicolas’s iPhone',
-        platform: 'iOS',
-        appVersion: '1.0.0',
-      }]);
-    const revokePairedDevice = vi.fn().mockResolvedValue(undefined);
-    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never);
-
-    const wrapper = mount(SettingsConnectionsPanel, {
-      props: {
-        getRemoteControlStatus,
-        startDevicePairing,
-        checkDevicePairing,
-        listPairedDevices,
-        revokePairedDevice,
-      },
-    });
-    await flushPromises();
-
-    expect(wrapper.text()).toContain('Codex device pairing');
-    expect(wrapper.text()).toContain('No paired devices');
-    await wrapper.findAll('button').find((button) => button.text() === 'Add device')?.trigger('click');
-    await flushPromises();
-    expect(wrapper.text()).toContain('ABCD-EFGH');
-
-    await vi.advanceTimersByTimeAsync(2_000);
-    await flushPromises();
-    expect(checkDevicePairing).toHaveBeenCalledWith(session);
-    expect(wrapper.text()).not.toContain('Paired successfully');
-    expect(wrapper.text()).not.toContain('ABCD-EFGH');
-    expect(wrapper.find('img[alt="Codex device pairing QR code"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain('Nicolas’s iPhone');
-    expect(wrapper.get('.settings-device-pairing__device-list').text()).toContain('Nicolas’s iPhone');
-    expect(wrapper.find('.settings-device-pairing__device-divider').exists()).toBe(true);
-
-    await wrapper.findAll('button').find((button) => button.text() === 'Revoke')?.trigger('click');
-    await flushPromises();
-    expect(revokePairedDevice).toHaveBeenCalledWith('environment-1', 'client-1');
-    configureAppClient(undefined);
-    vi.useRealTimers();
-  });
-
-  it('toggles mobile connections through the device-pairing controls', async () => {
-    const enableRemoteControl = vi.fn().mockResolvedValue({ status: 'connecting' });
-    const disableRemoteControl = vi.fn().mockResolvedValue({ status: 'disabled' });
-    const wrapper = mount(SettingsConnectionsPanel, {
-      props: {
-        getRemoteControlStatus: async () => ({ status: 'disabled' }),
-        enableRemoteControl,
-        disableRemoteControl,
-      },
-    });
-    await flushPromises();
-
-    await switchWithLabel(wrapper, 'Allow connections').vm.$emit('update:modelValue', true);
-    await flushPromises();
-    expect(enableRemoteControl).toHaveBeenCalledOnce();
-    const refreshingButton = wrapper.findAllComponents({ name: 'ElButton' })
-      .find((candidate) => candidate.text() === 'Refreshing');
-    expect(refreshingButton?.props('loading')).toBe(true);
-    expect(refreshingButton?.props('disabled')).toBe(true);
-    expect(wrapper.findAll('button').some((button) => button.text() === 'Add device')).toBe(false);
-    expect(wrapper.findAll('button').some((button) => button.text() === 'Refresh')).toBe(false);
-
-    await switchWithLabel(wrapper, 'Allow connections').vm.$emit('update:modelValue', false);
-    await flushPromises();
-    expect(disableRemoteControl).toHaveBeenCalledOnce();
-  });
 });
-
-function switchWithLabel(wrapper: ReturnType<typeof mount>, label: string) {
-  const control = wrapper.findAllComponents({ name: 'ElSwitch' })
-    .find((candidate) => (
-      candidate.attributes('aria-label') === label || candidate.props('ariaLabel') === label
-    ));
-  if (!control) throw new Error(`Missing ${label} switch`);
-  return control;
-}
 
 function bodyButton(label: string): HTMLButtonElement | undefined {
   return [...document.body.querySelectorAll('button')]

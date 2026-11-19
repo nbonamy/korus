@@ -2,7 +2,7 @@ import { access, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promise
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { WorktreeManager, type WorktreeInitializationProgress, type WorktreeManagerOptions } from '../worktree-manager';
+import { WorktreeManager, type WorktreeManagerOptions } from '../worktree-manager';
 
 describe('WorktreeManager', () => {
   let root: string;
@@ -21,17 +21,6 @@ describe('WorktreeManager', () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it('skips setup and environment copying when a transfer opts out of initialization', async () => {
-    await writeSetup('setup', 'echo setup');
-    await writeFile(path.join(repositoryPath, '.env'), 'SYNTHETIC=true');
-    const runCommand = vi.fn();
-    const manager = createManager({ runCommand });
-    const result = await manager.create(createInput(), { skipInitialization: true });
-    expect(result.initialization).toStrictEqual({ source: 'none', commands: [], copiedFiles: [] });
-    expect(runCommand).not.toHaveBeenCalled();
-    await expect(access(path.join(worktreePath, '.env'))).rejects.toThrow();
-  });
-
   it('uses the current-platform repository setup instead of the generic setup', async () => {
     await writeSetup('setup', 'npm install');
     await writeSetup('setup-macos.sh', 'make bootstrap');
@@ -40,13 +29,8 @@ describe('WorktreeManager', () => {
     const listSourceBranches = vi.fn();
     const manager = createManager({ listSourceBranches, platform: 'darwin', runCommand });
 
-    const result = await manager.create(createInput());
-
-    expect(result.initialization).toStrictEqual({
-      source: 'repository',
-      commands: [path.join('.agents', 'worktree', 'setup-macos.sh')],
-      copiedFiles: [],
-    });
+    await manager.create(createInput());
+    await manager.waitForInitialization(worktreePath);
     expect(listSourceBranches).not.toHaveBeenCalled();
     await expect(access(path.join(worktreePath, '.env'))).rejects.toThrow();
     expect(runCommand).toHaveBeenCalledOnce();
@@ -63,6 +47,7 @@ describe('WorktreeManager', () => {
     const manager = createManager({ platform: 'linux', runCommand });
 
     await manager.create(createInput());
+    await manager.waitForInitialization(worktreePath);
 
     expect(runCommand).toHaveBeenCalledWith(
       '/bin/sh',
@@ -77,6 +62,7 @@ describe('WorktreeManager', () => {
     const manager = createManager({ platform: 'win32', runCommand });
 
     await manager.create(createInput());
+    await manager.waitForInitialization(worktreePath);
 
     expect(runCommand).toHaveBeenCalledWith(
       'powershell.exe',
@@ -98,9 +84,8 @@ describe('WorktreeManager', () => {
     const runCommand = vi.fn();
     const manager = createManager({ runCommand });
 
-    const result = await manager.create(createInput());
-
-    expect(result.initialization).toStrictEqual({ source: 'repository', commands: [], copiedFiles: [] });
+    await manager.create(createInput());
+    await manager.waitForInitialization(worktreePath);
     expect(runCommand).not.toHaveBeenCalled();
   });
 
@@ -137,13 +122,8 @@ describe('WorktreeManager', () => {
     });
     const manager = createManager({ listSourceBranches, runCommand });
 
-    const result = await manager.create(createInput());
-
-    expect(result.initialization).toStrictEqual({
-      source: 'automatic',
-      commands: ['npm ci'],
-      copiedFiles: ['.env', path.join('apps', 'api', '.env.test')],
-    });
+    await manager.create(createInput());
+    await manager.waitForInitialization(worktreePath);
     expect(await readFile(path.join(worktreePath, '.env'), 'utf8')).toBe('SOURCE=default\n');
     expect(await readFile(path.join(worktreePath, '.env.local'), 'utf8')).toBe('KEEP_EXISTING=true\n');
     expect(await readFile(path.join(worktreePath, 'apps', 'api', '.env.test'), 'utf8')).toBe('API_ENV=test\n');
@@ -152,6 +132,7 @@ describe('WorktreeManager', () => {
     await expect(access(path.join(worktreePath, 'dist', '.env'))).rejects.toThrow();
     await expect(access(path.join(worktreePath, '.worktrees', 'other', '.env'))).rejects.toThrow();
     expect(runCommand).toHaveBeenCalledOnce();
+    expect(runCommand).toHaveBeenCalledWith('npm', ['ci'], expect.objectContaining({ cwd: worktreePath }));
   });
 
   it('initializes every detected root ecosystem in a stable sequence', async () => {
@@ -162,29 +143,22 @@ describe('WorktreeManager', () => {
       writeFile(path.join(worktreePath, 'go.mod'), 'module example.com/project\n'),
     ]);
     const runCommand = vi.fn().mockResolvedValue({});
-    const progress: WorktreeInitializationProgress[] = [];
-    const manager = createManager({ runCommand });
+    const onInitializationChanged = vi.fn();
+    const manager = createManager({ runCommand, onInitializationChanged });
 
-    const result = await manager.create(createInput(), {
-      onInitializationProgress: (event) => progress.push(event),
-    });
-
-    expect(result.initialization).toStrictEqual({
-      source: 'automatic',
-      commands: ['npm ci', 'uv sync', 'go mod download'],
-      copiedFiles: [],
-    });
+    await manager.create(createInput());
+    await manager.waitForInitialization(worktreePath);
     expect(runCommand.mock.calls.map(([command, args]) => [command, args])).toStrictEqual([
       ['npm', ['ci']],
       ['uv', ['sync']],
       ['go', ['mod', 'download']],
     ]);
-    expect(progress).toStrictEqual([
-      { phase: 'detecting' },
-      { phase: 'running', source: 'automatic', command: 'npm ci', commandIndex: 0, commandCount: 3 },
-      { phase: 'running', source: 'automatic', command: 'uv sync', commandIndex: 1, commandCount: 3 },
-      { phase: 'running', source: 'automatic', command: 'go mod download', commandIndex: 2, commandCount: 3 },
-      { phase: 'complete', source: 'automatic', commands: ['npm ci', 'uv sync', 'go mod download'], copiedFiles: [] },
+    expect(onInitializationChanged.mock.calls.map(([, state]) => state)).toStrictEqual([
+      { state: 'running' },
+      { state: 'running', command: 'npm ci' },
+      { state: 'running', command: 'uv sync' },
+      { state: 'running', command: 'go mod download' },
+      { state: 'complete' },
     ]);
   });
 
@@ -195,9 +169,8 @@ describe('WorktreeManager', () => {
     const listSourceBranches = vi.fn();
     const manager = createManager({ listSourceBranches, mode: 'repository', runCommand });
 
-    await expect(manager.create(createInput())).resolves.toMatchObject({
-      initialization: { source: 'none', commands: [], copiedFiles: [] },
-    });
+    await manager.create(createInput());
+    await manager.waitForInitialization(worktreePath);
     expect(listSourceBranches).not.toHaveBeenCalled();
     await expect(access(path.join(worktreePath, '.env'))).rejects.toThrow();
     expect(runCommand).not.toHaveBeenCalled();
@@ -208,9 +181,8 @@ describe('WorktreeManager', () => {
     const runCommand = vi.fn();
     const manager = createManager({ mode: 'off', runCommand });
 
-    await expect(manager.create(createInput())).resolves.toMatchObject({
-      initialization: { source: 'none', commands: [], copiedFiles: [] },
-    });
+    await manager.create(createInput());
+    await manager.waitForInitialization(worktreePath);
     expect(runCommand).not.toHaveBeenCalled();
   });
 
@@ -229,7 +201,7 @@ describe('WorktreeManager', () => {
     const result = await manager.create(createInput());
 
     expect(result.created).toBe(false);
-    expect(result.initialization).toStrictEqual({ source: 'none', commands: [], copiedFiles: [] });
+    expect(manager.getInitializationState(worktreePath)).toBeUndefined();
     expect(runCommand).not.toHaveBeenCalled();
   });
 
@@ -243,7 +215,8 @@ describe('WorktreeManager', () => {
     const runCommand = vi.fn().mockRejectedValueOnce(failure);
     const manager = createManager({ runCommand });
 
-    await expect(manager.create(createInput())).rejects.toBe(failure);
+    await manager.create(createInput());
+    await expect(manager.waitForInitialization(worktreePath)).rejects.toThrow(failure.message);
     expect(runCommand).toHaveBeenCalledOnce();
   });
 
@@ -262,7 +235,7 @@ describe('WorktreeManager', () => {
     });
     const manager = createManager({ runCommand, mode: 'automatic' });
     try {
-      const created = await manager.create(createInput(), { backgroundInitialization: true });
+      const created = await manager.create(createInput());
       expect(created.worktree.path).toBe(worktreePath);
       await vi.waitFor(() => expect(runCommand).toHaveBeenCalledOnce());
       expect(manager.getInitializationState(worktreePath)).toStrictEqual({ state: 'running', command: 'npm ci' });
@@ -288,7 +261,7 @@ describe('WorktreeManager', () => {
     }));
     const manager = createManager({ runCommand, mode: 'automatic' });
     try {
-      await manager.create(createInput(), { backgroundInitialization: true });
+      await manager.create(createInput());
       await vi.waitFor(() => expect(runCommand).toHaveBeenCalledOnce());
       await manager.cancelInitialization(worktreePath);
       expect(stopped).toBe(true);
@@ -300,6 +273,7 @@ describe('WorktreeManager', () => {
   function createManager(options: {
     listSourceBranches?: WorktreeManagerOptions['listSourceBranches'];
     mode?: 'automatic' | 'repository' | 'off';
+    onInitializationChanged?: WorktreeManagerOptions['onInitializationChanged'];
     platform?: NodeJS.Platform;
     runCommand: NonNullable<WorktreeManagerOptions['runCommand']>;
   }): WorktreeManager {
@@ -310,6 +284,7 @@ describe('WorktreeManager', () => {
       }),
       getInitializationMode: () => options.mode ?? 'automatic',
       ...(options.listSourceBranches ? { listSourceBranches: options.listSourceBranches } : {}),
+      onInitializationChanged: options.onInitializationChanged,
       platform: options.platform ?? 'linux',
       runCommand: options.runCommand,
     });

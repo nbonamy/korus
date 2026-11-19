@@ -581,7 +581,19 @@ Agents never move between backend locations.
   retried without removing unrelated teams. Deleting a connection drops the links
   and leaves the remote running.
 - Sidebar sections are keyed by the repository's origin identity, falling back to
-  the path on the agent's own host. Missions and sharing stay on the local host.
+  the path on the agent's own host. Sharing stays on the local host.
+- A Mission has one execution host. That daemon owns the lead, workers, runs,
+  artifacts and worktrees. The controller links the host's workspace, projects
+  its Missions alongside agents, and sends Mission actions to their owner.
+  Linked Mission metadata is cached with the roster. The saved connection and
+  a fresh snapshot reattach the controller to work done while disconnected.
+  Startup rechecks previously installed linked SSH hosts marked unavailable.
+- A hosted Mission captures the workspace's repo catalog at creation. Tickets
+  reference catalog keys even when the selected host has no checkout. At dispatch
+  the owning daemon matches Git origins, acquires a missing clone using its own
+  access, and persists the Mission worktree before launching the worker. Parallel
+  workers for one repo share that Mission worktree. A failed checkout blocks its
+  assignment and leaves other repos eligible for dispatch.
 - The controlling daemon owns collaboration and durable tasks for a mixed-host
   team. Hidden remote teams retain their controller identity; roster, messaging,
   delegation and task tools call that controller over the existing SSH channel.
@@ -662,10 +674,11 @@ clears or changes it, Korus never re-detects.
   setup of its new worktree until the captured changes and staging state are
   transferred and source cleanup succeeds, then uses the same configured
   initializer in the background. Setup errors do not roll back the transfer.
-  Agent creation returns after Git creates the worktree; initialization continues
-  in the owning daemon. Agents carry setup state and the current command across
-  desktop, split panes and remote projections. Their conversations can start during
-  setup; an identity-scoped wait operation gates dependency-dependent checks,
+  Setup always runs in the owning daemon's background after checkout finishes,
+  including the final fast-forward for a pull or merge request. Worktree creation
+  returns without waiting for setup. Agents carry setup state and the current
+  command across desktop, split panes and remote projections. Conversations can
+  start during setup. An identity-scoped wait operation gates dependency-dependent checks,
   competing installs and commits. Failures remain visible, and saved running setup
   becomes an interrupted error after a daemon restart. Setup processes are cancelled
   during daemon shutdown.

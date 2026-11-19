@@ -125,6 +125,36 @@ describe('mission execution', () => {
     expect(h.current().stage).toBe('implementation');
   });
 
+  it('acquires a hosted Mission checkout once without holding other Mission writes', async () => {
+    const h = setup(); const lead = h.originalAgents[0]!;
+    const key = 'git.example.invalid/team/app';
+    const other = createMission(h.snapshot, { outcome: 'Other work', workflowType: 'shapeAndShipFeature', teamId: h.snapshot.teams[0]!.id, orchestratorMemberId: lead.id });
+    let releaseCheckout!: (path: string) => void;
+    const resolveRepository = vi.fn(() => new Promise<string>(resolve => { releaseCheckout = resolve; }));
+    Object.assign(h.ports, { resolveRepository });
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation'; mission.stageAgentIds.tickets = lead.id;
+      mission.execution!.parallelImplementation = true;
+      mission.execution!.repositoryCatalog = [{ key, url: `https://${key}.git` }];
+      mission.execution!.workspaceName = 'team-billing';
+      mission.artifacts.tickets = ['a', 'b'].map(id => ({ id: `mission-ticket-${id}`, title: id, repositoryPath: key, done: false }));
+    });
+    await h.service.schedule(lead.id, { commandId: 'initial', expectedRevision: 0, maxConcurrency: 2, continuationLimit: 0,
+      assignments: ['a', 'b'].map(id => ({ ticketId: `mission-ticket-${id}`, ticketRevision: 0, memberId: lead.id })) });
+    await vi.waitFor(() => expect(resolveRepository).toHaveBeenCalled());
+
+    let otherWritten = false;
+    void h.store.change(other.id, mission => { mission.outcome = 'Other work, revised'; }).then(() => { otherWritten = true; });
+    await vi.waitFor(() => expect(otherWritten).toBe(true));
+
+    releaseCheckout('/host/app');
+    await h.service.waitForLaunches();
+    expect(resolveRepository).toHaveBeenCalledTimes(1);
+    expect(h.ports.createWorktree).toHaveBeenCalledTimes(1);
+    expect(h.current().execution!.workspaces).toEqual([expect.objectContaining({ repositoryPath: key, path: '/host/app-mission-team-billing', branch: 'mission/team-billing' })]);
+    expect(h.current().execution!.runs.map(run => run.status)).toEqual(['running', 'running']);
+  });
+
   it('reads and revises a 200-ticket schedule without sending duplicate historical artifact snapshots', async () => {
     const h = setup(); const lead = h.originalAgents[0]!;
     await h.store.change(h.current().id, mission => {

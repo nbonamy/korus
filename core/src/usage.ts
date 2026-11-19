@@ -303,6 +303,8 @@ export type UsageCost = {
   unpricedRequests: number;
   unknownRequestExecutions: number;
   reasons: { reason: UsageCostReason; count: number }[];
+  /** Regions reported for priced usage. Null means the estimate used the base rate. */
+  pricingRegions?: (string | null)[];
 };
 
 export function validRequestObservation(

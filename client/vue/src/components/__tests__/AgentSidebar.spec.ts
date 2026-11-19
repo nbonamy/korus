@@ -671,14 +671,19 @@ describe('AgentSidebar sessions', () => {
       expect(remoteButtons()).toHaveLength(0);
       document.body.innerHTML = '';
       await openMenu({ remoteConnections: [connection('ready')] });
-      expect(remoteButtons()).toHaveLength(2);
+      expect(remoteButtons()).toHaveLength(4);
     });
 
-    it('keeps the row label local and sends the remote icon to the where dialog with the origin', async () => {
+    it.each([
+      ['From branch…', 'from-branch'],
+      ['New worktree…', 'new-worktree'],
+      ['Pull requests & issues…', 'from-work-item'],
+    ])('sends the globe beside %s to the host picker with the origin', async (label, action) => {
       const wrapper = await openMenu({ remoteConnections: [connection('ready')] });
-      remoteButtons()[1]!.click();
+      remoteButtons().find(button => button.parentElement?.querySelector('button')?.textContent?.trim() === label)!.click();
       await flushPromises();
-      expect(wrapper.emitted('open-on-remote')).toStrictEqual([[{ action: 'new-worktree', repositoryName: 'id8', repositoryKey: 'remote:github.com/org/id8', originUrl: 'git@github.com:org/id8.git' }]]);
+      expect(wrapper.emitted('open-on-remote')).toStrictEqual([[{ action, repositoryName: 'id8', repositoryKey: 'remote:github.com/org/id8', originUrl: 'git@github.com:org/id8.git' }]]);
+      expect(wrapper.emitted('create-agent-from-repository')).toBeUndefined();
       expect(wrapper.emitted('create-agent-worktree-in-repository')).toBeUndefined();
     });
   });

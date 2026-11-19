@@ -7,7 +7,7 @@ import { agentConversationState } from '../../src/components/use-agent-conversat
 import { useAppState } from '../../src/app-state';
 import { createAgentComposerState } from '../../src/agent-composer-state';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
-import type { AppSnapshot, ProviderApprovalRequest, ProviderConversationRef, AppApi, ConversationSummary, DevicePairingSession, MainToRendererEvent, RendererMessage, SourceRepository, UpdateAgentInput, WorkItem, WorkSource } from '@workspace/core/contracts';
+import type { AppSnapshot, ProviderApprovalRequest, ProviderConversationRef, AppApi, ConversationSummary, MainToRendererEvent, RendererMessage, SourceRepository, UpdateAgentInput, WorkItem, WorkSource } from '@workspace/core/contracts';
 import { updateAgentFromInput } from '@workspace/core/agent-manager';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
 import { workItemAssignmentPrompt } from '@workspace/core/work-item-prompts';
@@ -200,33 +200,6 @@ describe('useAppState', () => {
     expect(state.codexResourceSharingStatus.value).toStrictEqual({
       enabled: true,
       migrationRequired: true,
-    });
-  });
-
-  it('JSON-normalizes reactive device pairing sessions before Electron IPC', async () => {
-    const checkDevicePairing = vi.fn((session: DevicePairingSession) => {
-      structuredClone(session);
-      return Promise.resolve(true);
-    });
-    stubElectronTestWindow({
-      app: {
-        checkDevicePairing,
-      } satisfies Partial<AppApi>,
-    });
-    const session = reactive<DevicePairingSession>({
-      pairingCode: 'opaque-payload',
-      manualPairingCode: 'ABCD-EFGH',
-      environmentId: 'environment-1',
-      expiresAt: '2030-03-17T17:46:40.000Z',
-    });
-
-    const state = useAppState();
-    await expect(state.checkDevicePairing(session)).resolves.toBe(true);
-    expect(checkDevicePairing).toHaveBeenCalledWith({
-      pairingCode: 'opaque-payload',
-      manualPairingCode: 'ABCD-EFGH',
-      environmentId: 'environment-1',
-      expiresAt: '2030-03-17T17:46:40.000Z',
     });
   });
 

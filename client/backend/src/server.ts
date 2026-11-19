@@ -18,7 +18,7 @@ import { companionSessionId } from '@workspace/core/companion-protocol';
 import { AutoResumeService } from './agents/auto-resume-service';
 import { previewRepositoryDeletion, removeRepositoryFolders } from './repository-deletion';
 import { BrowserExtensionPackages } from './browser-extension-packages';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type { UsageService } from './usage/usage-service';
 import type { UsageFilter } from '@workspace/core/usage';
@@ -43,13 +43,15 @@ import type { Requirements } from './requirements';
 import { backendCodexHomeDir } from './state';
 import { isProviderConnection, type ProviderAuthentication, type ProviderAuthenticationAction, type ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
 import { MissionExecutionService } from './mission-execution-service';
-import { missionRunPromptMarker } from './mission-execution-policy';
+import { missionRepositoryAgents, missionRunPromptMarker } from './mission-execution-policy';
 import { applyMissionDebugFixture } from './mission-debug-fixtures';
 import { applyMissionScreenshotFixture, isMissionScreenshotAgent, missionScreenshotConversation, missionScreenshotModel, missionScreenshotSnapshotEvent } from './mission-screenshot-fixture';
 import { createVisualizeDebugFixture } from './visualize-debug-fixtures';
 import { missionStageSkills } from './bundled-skills/catalog';
 import { imageGenerationSkill } from './image-generation-service';
-import { featureStages, type DeleteMissionInput, type Mission, type MissionReviewDebugState, type MissionStage } from '@workspace/core/missions';
+import { featureStages, isMissionRepositoryCatalog, type CreateMissionInput, type DeleteMissionInput, type Mission, type MissionReviewDebugState, type MissionStage } from '@workspace/core/missions';
+import type { MissionRepository } from '@workspace/core/mission-types';
+import { canonicalGitRemoteIdentity, cloneUrlForRemote, sanitizeGitRemoteUrl } from '@workspace/core/git-remote';
 import { missionCreatedWorkspaces, type MissionExecutionInput, type MissionResultInput } from '@workspace/core/mission-execution';
 import { MissionService } from './mission-service';
 import { FileMissionArtifactStore, type MissionArtifactStorage } from './mission-artifact-store';
@@ -63,7 +65,7 @@ import { createAppRpcError, createAppRpcResult, appRpcErrorCodes, isAppRpcNotifi
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { applyMainEventToSnapshot } from '@workspace/core/snapshot';
 import { decodeAppSnapshot, isAppSnapshot } from '@workspace/core/snapshot-guards';
-import type { AddSshConnectionInput, Agent, AgentGitDiffTarget, AgentHistoryLoadResult, AgentStatus, AppPluginStatus, AppSnapshot, ClosedAgentRecord, ProviderModelOption, ProviderConversationRef, CloneSourceRepositoryInput, CodexResourceSharingStatus, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceRepositoryInput, CreateSourceWorktreeInput, CreateTeamInput, ClientState, DevicePairingStatus, DuplicateAgentOptions, BackendPublishedEvent, MoveAgentToTeamInput, OpenInApplication, RemoteConnection, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, SendPromptOptions, SetCodexResourceSharingInput, SourceBranch, SourceRepository, SourceWorktree, SystemPermissionsStatus, Team, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput } from '@workspace/core/contracts';
+import type { AddSshConnectionInput, Agent, AgentGitDiffTarget, AgentHistoryLoadResult, AgentStatus, AppPluginStatus, AppSnapshot, ClosedAgentRecord, ProviderModelOption, ProviderConversationRef, CloneSourceRepositoryInput, CodexResourceSharingStatus, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceRepositoryInput, CreateSourceWorktreeInput, CreateTeamInput, ClientState, DuplicateAgentOptions, BackendPublishedEvent, MoveAgentToTeamInput, OpenInApplication, RemoteConnection, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, SendPromptOptions, SetCodexResourceSharingInput, SourceBranch, SourceRepository, SourceWorktree, SystemPermissionsStatus, Team, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput } from '@workspace/core/contracts';
 import type { WorkBacklogConfigurationInput, WorkProviderKind } from '@workspace/core/contracts';
 import { isAgentGitDiffTarget } from '@workspace/core/snapshot-guard-collections';
 import { providerDisplayName, resolveProviderCoordinationPolicy } from '@workspace/core/provider-driver';
@@ -87,7 +89,7 @@ import { projectClientSnapshot, splitSettingsInput } from '@workspace/core/clien
 import { RemoteDaemonClientManager } from './connections/remote-daemon-client';
 import { RemoteTeamService, type RemoteSnapshotCache, type RemoteTeamPointer } from './connections/remote-team-service';
 import { SshConnectionService } from './connections/ssh-connections';
-import { installedByRemoteDaemon, installOverSsh } from './connections/remote-engines';
+import { installOverSsh } from './connections/remote-engines';
 import type { AutomationRunner } from './automations/runner';
 import type { WorkIntegrationManager } from './work-integrations/manager';
 import { logMain, warnMain } from './log';
@@ -178,7 +180,7 @@ export type AppBackendServerOptions = {
   saveCodeReviewReport?: (agent: Agent, session: CodeReviewSession) => Promise<string>;
   agentCreation?: AgentCreationService;
   worktreeInitializationForFolder?: (folder: string) => Agent['worktreeInitialization'];
-  initializeWorktree?: (repositoryPath: string, worktreePath: string) => Promise<void>;
+  initializeWorktree?: (repositoryPath: string, worktreePath: string) => void;
   designService?: DesignService;
   visualizeService?: VisualizeService;
 };
@@ -539,8 +541,6 @@ export class AppBackendServer {
   private readonly missions: MissionService;
   private readonly missionExecution: MissionExecutionService;
   private readonly missionArtifacts: MissionArtifactStorage;
-  private remoteControlStatus: DevicePairingStatus = { status: 'disabled' };
-  private remoteControlStatusLoaded = false;
   /** In-process guest authority, separate from local RPC and paired-device grants. */
   authorizeConversationGuest(handle: string, credential: string) {
     if (!this.conversationShares) return Promise.reject(new Error('denied'));
@@ -789,6 +789,7 @@ export class AppBackendServer {
     this.missionExecution = new MissionExecutionService({
       listModels: agent => this.handleAgentDriverRequest(agent, backendMethods.driverModelsList, { agent }) as Promise<ProviderModelOption[]>,
       getHead: readWorktreeHead,
+      resolveRepository: repo => this.resolveHostedMissionRepository(repo),
       snapshot: this.snapshot,
       missions: this.missions,
       publish: () => this.emitProjectedSnapshot(),
@@ -979,6 +980,7 @@ export class AppBackendServer {
       getWorkIntegrations: () => this.requireWorkIntegrations(),
       recordMerge: (agentId, sourceFolder, worktreeDeleted, pushPending) => this.missionExecution.recordMerge(agentId, sourceFolder, worktreeDeleted, pushPending),
       git: this.agentGitService,
+      worktreeInitializationForFolder: options.worktreeInitializationForFolder,
       persistAndEmitSnapshot: () => this.persistAndEmitSnapshot(),
       refreshGitStatus: async (agentId) => { await this.agentWorkspaces.refreshGitStatus(agentId); },
       refreshWorkspaceIdentity: (agentId) => this.agentWorkspaces.refreshIdentity(agentId),
@@ -1081,6 +1083,60 @@ export class AppBackendServer {
       memberId: input.orchestratorMemberId,
     });
     return this.snapshot.missions!.find(candidate => candidate.id === mission.id)!;
+  }
+
+  private async startHostedMission(input: CreateMissionInput, remoteConnectionId: string): Promise<void> {
+    const release = this.reserveRemoteCreation({ teamId: input.teamId, remoteConnectionId });
+    try {
+      const pointer = await this.remoteAgentPointer({ teamId: input.teamId, remoteConnectionId });
+      if (!pointer) throw new Error('Choose a Mission environment.');
+      const snapshot = await this.remoteTeams.clientSnapshot();
+      const catalog = new Map<string, MissionRepository>();
+      for (const agent of missionRepositoryAgents(snapshot, input.teamId)) {
+        const workspace = agent.workspace ?? (!agent.remoteConnectionId && agent.folder
+          ? await this.agentGitService.identity(agent.folder).catch(() => undefined) : undefined);
+        if (workspace?.kind !== 'git') continue;
+        const origin = workspace.originUrl && sanitizeGitRemoteUrl(workspace.originUrl);
+        const identity = origin && canonicalGitRemoteIdentity(origin);
+        const url = origin && cloneUrlForRemote(origin);
+        const hostPath = agent.remoteConnectionId === remoteConnectionId ? workspace.primaryWorktreeRoot : undefined;
+        const suffix = createHash('sha256').update(`${agent.remoteConnectionId ?? 'local'}:${workspace.primaryWorktreeRoot}`).digest('hex').slice(0, 12);
+        const key = identity || `local-only/${workspace.repositoryName}-${suffix}`;
+        const previous = catalog.get(key);
+        catalog.set(key, { key, ...(url ? { url } : {}), ...(hostPath || previous?.checkoutPath ? { checkoutPath: hostPath ?? previous?.checkoutPath } : {}) });
+      }
+      await this.requestHostedMissionSnapshot(pointer, backendMethods.missionCreateHosted, {
+        input: { outcome: input.outcome, workflowType: input.workflowType, teamId: pointer.remoteTeamId, catalog: [...catalog.values()] },
+      });
+    } finally { release(); }
+  }
+
+  private async resolveHostedMissionRepository(repo: MissionRepository): Promise<string> {
+    if (repo.checkoutPath) {
+      const identity = await this.agentGitService.identity(repo.checkoutPath).catch(() => undefined);
+      if (identity?.kind === 'git' && (!repo.url || (identity.originUrl && canonicalGitRemoteIdentity(identity.originUrl) === repo.key))) {
+        return identity.primaryWorktreeRoot;
+      }
+    }
+    if (!repo.url) throw new Error('This repository has no clone URL and its checkout is unavailable on this host.');
+    const url = repo.url;
+    const driver = this.requireDriverRpc();
+    const repository = await acquireRepository(url, true, {
+      repositories: () => driver.handle(backendMethods.sourceRepositoriesList, { sourceFolderPath: this.snapshot.sourceFolder.path }) as Promise<SourceRepository[]>,
+      clone: async () => {
+        await this.initializeSourceFolderIfNeeded();
+        const sourceFolderPath = this.snapshot.sourceFolder.path.trim();
+        if (!sourceFolderPath) throw new Error('Choose a source folder on this host before cloning.');
+        return driver.handle(backendMethods.sourceRepositoryClone, { sourceFolderPath, url }) as Promise<SourceRepository>;
+      },
+    });
+    return repository.path;
+  }
+
+  private async requestHostedMissionSnapshot(pointer: RemoteTeamPointer, method: string, params: unknown): Promise<void> {
+    const snapshot = await this.remoteTeams.request(pointer.connectionId, method, params);
+    if (!isAppSnapshot(snapshot)) throw new Error('The Mission host returned an invalid workspace snapshot.');
+    this.remoteTeams.rememberSnapshot(pointer.connectionId, snapshot);
   }
 
   /** The first run starts in the background; its lead agent exists once the run reports running. */
@@ -1215,6 +1271,7 @@ export class AppBackendServer {
   }
 
   private async deleteMission(input: DeleteMissionInput): Promise<void> {
+    await this.missionExecution.settleWorkerWorkspaces(input.id);
     await this.missions.remove(input, async (deleted, workers) => {
       const workspacePaths = missionCreatedWorkspaces(deleted).map(workspace => workspace.path);
       const missingWorktrees = new Set<string>();
@@ -1323,10 +1380,11 @@ export class AppBackendServer {
       finally { const ms = Date.now() - started; if (ms >= 250) logMain('startup', 'slow step', { step: name, ms, sinceStart: Date.now() - began }); }
     };
     await step('remote connections', () => this.remoteTeams.activateConnections());
+    // Unreachable hosts can take a full SSH timeout, so they recover off the startup path.
+    void this.recoverLinkedHosts();
     await step('handoffs', () => this.agentHandoffs.recover());
     await step('engine connections', () => this.providerConnections?.refresh());
     await step('source folder', () => this.initializeSourceFolderIfNeeded());
-    if (this.snapshot.providerConnections?.some(provider => provider.connected && defaultProviderCapabilities(provider.provider).remoteControl)) await step('remote control status', () => this.ensureRemoteControlStatus());
     await step('workspaces', () => this.agentWorkspaces.reconcile());
     await step('conversations', () => this.reconcileConversationsOnce());
     this.reconcileShares();
@@ -1336,6 +1394,28 @@ export class AppBackendServer {
     await step('code reviews', async () => { for (const agent of this.snapshot.agents) await this.codeReviews?.resumeInterrupted(agent); });
     await step('interrupted work', () => this.resumeInterruptedWork());
     logMain('startup', 'initialized', { ms: Date.now() - began });
+  }
+
+  /** Reattaches installed linked SSH hosts that were marked unavailable before the controller restarted. Inspection never updates or stops a daemon. */
+  private async recoverLinkedHosts(): Promise<void> {
+    const linked = new Set(this.snapshot.teams.flatMap(team => team.remoteLinks?.map(link => link.connectionId) ?? []));
+    let recovered = false;
+    await Promise.all(this.snapshot.remoteConnections.connections.filter(connection => (
+      connection.kind === 'ssh' && connection.status === 'error' && connection.installedAt && linked.has(connection.id)
+    )).map(async connection => {
+      try {
+        const inspected = await this.sshConnections.inspectVersions(connection);
+        // The saved connection may have been edited or removed while the host was inspected.
+        if (this.closing || inspected.status !== 'ready' || !this.snapshot.remoteConnections.connections.includes(connection)) return;
+        this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map(candidate => candidate === connection ? inspected : candidate);
+        recovered = true;
+      } catch {
+        // Keep the saved error until the host is reachable again.
+      }
+    }));
+    if (!recovered || this.closing) return;
+    await this.remoteTeams.activateConnections();
+    await this.persistAndEmitSnapshot().catch(error => logMain('startup', 'linked host recovery failed', { error: String(error) }));
   }
 
   private async resumeInterruptedWork(): Promise<void> {
@@ -1958,19 +2038,6 @@ export class AppBackendServer {
         return createAppRpcResult(message.id, await this.systemPermissions.openAccessibilitySettings());
       case backendMethods.systemPermissionsScreenRecordingOpen:
         return createAppRpcResult(message.id, await this.systemPermissions.openScreenRecordingSettings());
-      case backendMethods.remoteControlStatusGet:
-      case backendMethods.remoteControlEnable:
-      case backendMethods.remoteControlDisable:
-        {
-          const status = await this.requireDriverRpc().handle(message.method, message.params) as DevicePairingStatus;
-          this.publishRemoteControlStatus(status);
-          return createAppRpcResult(message.id, status);
-        }
-      case backendMethods.remoteControlPairingStart:
-      case backendMethods.remoteControlPairingCheck:
-      case backendMethods.remoteControlClientsList:
-      case backendMethods.remoteControlClientRevoke:
-        return createAppRpcResult(message.id, await this.requireDriverRpc().handle(message.method, message.params));
       case backendMethods.connectionsSshHostsList:
         return createAppRpcResult(message.id, await this.sshConnections.listHostCandidates());
       case backendMethods.connectionsSshCreate: {
@@ -2014,16 +2081,7 @@ export class AppBackendServer {
           this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map(candidate => candidate.id === connectionId ? { ...candidate, detail } : candidate);
           await this.persistAndEmitSnapshot();
         };
-        let checked = await this.sshConnections.checkConnection(connection, backends, progress);
-        for (const provider of backends.filter(installedByRemoteDaemon)) {
-          if (checked.status !== 'ready') break;
-          await progress(`Installing ${providerDisplayName(provider)}…`);
-          try {
-            const installed = await this.remoteClients.request<ProviderSetupStatus>(checked, backendMethods.providerInstall, { provider, _clientId: 'remote-controller' });
-            if (!installed.installed) throw new Error(`${providerDisplayName(provider)} installation could not be verified.`);
-          }
-          catch (error) { checked = { ...checked, status: 'error', detail: error instanceof Error ? error.message : String(error) }; }
-        }
+        const checked = await this.sshConnections.checkConnection(connection, backends, progress);
         this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map(candidate => candidate.id === connectionId ? checked : candidate);
         await this.activateRemoteConnection(checked);
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
@@ -2180,34 +2238,65 @@ export class AppBackendServer {
       }
       case backendMethods.missionExecute: {
         const input = requireRecord(message.params).input as MissionExecutionInput;
+        const pointer = this.remoteTeams.pointerForMission(input?.id);
+        if (pointer) {
+          if (input.action === 'configure' && input.teamId !== pointer.localTeamId) throw new Error('Choose members from the Mission workspace.');
+          const remoteInput = input.action === 'configure' ? { ...input, teamId: pointer.remoteTeamId } : input;
+          await this.requestHostedMissionSnapshot(pointer, message.method, { input: remoteInput });
+          return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
+        }
         await this.missionExecution.execute(input);
         return createAppRpcResult(message.id, await this.remoteTeams.clientSnapshot());
       }
       case backendMethods.missionArtifactRead: {
         const params = requireRecord(message.params);
         if (typeof params.missionId !== 'string' || typeof params.stage !== 'string') throw new Error('Invalid mission artifact request.');
+        const pointer = this.remoteTeams.pointerForMission(params.missionId);
+        if (pointer) return createAppRpcResult(message.id, await this.remoteTeams.request(pointer.connectionId, message.method, params));
         return createAppRpcResult(message.id, await this.missionExecution.readArtifactForMission(
           params.missionId,
           params.stage as import('@workspace/core/missions').MissionStage,
         ));
       }
       case backendMethods.missionCreate: {
-        const input = requireRecord(message.params).input as import('@workspace/core/missions').CreateMissionInput;
-        await this.createMissionAndRun(input);
+        const input = requireRecord(requireRecord(message.params).input) as CreateMissionInput;
+        if (input.remoteConnectionId !== undefined) {
+          await this.startHostedMission(input, requireString(input.remoteConnectionId, 'remoteConnectionId'));
+        } else await this.createMissionAndRun(input);
+        const snapshot = await this.remoteTeams.clientSnapshot();
+        this.emitSnapshotUpdated(snapshot);
+        return createAppRpcResult(message.id, snapshot);
+      }
+      case backendMethods.missionCreateHosted: {
+        const input = requireRecord(requireRecord(message.params).input);
+        const catalog = input.catalog;
+        if (!isMissionRepositoryCatalog(catalog) || catalog.some(repo => repo.url && (
+          canonicalGitRemoteIdentity(repo.url) !== repo.key || cloneUrlForRemote(sanitizeGitRemoteUrl(repo.url) ?? '') !== repo.url
+        ))) throw new Error('Invalid Mission repository catalog.');
+        const mission = await this.missions.createHosted({
+          outcome: requireString(input.outcome, 'outcome'),
+          workflowType: input.workflowType as CreateMissionInput['workflowType'],
+          teamId: requireString(input.teamId, 'teamId'),
+        }, catalog);
+        await this.missionExecution.execute({ id: mission.id, revision: mission.revision, action: 'run', memberId: mission.execution!.memberIds[0] });
         const snapshot = await this.remoteTeams.clientSnapshot();
         this.emitSnapshotUpdated(snapshot);
         return createAppRpcResult(message.id, snapshot);
       }
       case backendMethods.missionUpdate: {
         const input = isRecord(message.params) ? message.params.input : undefined;
-        await this.missions.mutate('update', input);
+        const pointer = isRecord(input) && typeof input.id === 'string' ? this.remoteTeams.pointerForMission(input.id) : undefined;
+        if (pointer) await this.requestHostedMissionSnapshot(pointer, message.method, { input });
+        else await this.missions.mutate('update', input);
         const snapshot = await this.remoteTeams.clientSnapshot();
         this.emitSnapshotUpdated(snapshot);
         return createAppRpcResult(message.id, snapshot);
       }
       case backendMethods.missionDelete: {
         const input = requireRecord(message.params).input as DeleteMissionInput;
-        await this.deleteMission(input);
+        const pointer = this.remoteTeams.pointerForMission(input?.id);
+        if (pointer) await this.requestHostedMissionSnapshot(pointer, message.method, { input });
+        else await this.deleteMission(input);
         const snapshot = await this.remoteTeams.clientSnapshot();
         this.emitSnapshotUpdated(snapshot);
         return createAppRpcResult(message.id, snapshot);
@@ -3623,11 +3712,13 @@ export class AppBackendServer {
         if (connectionId && message.method !== backendMethods.providerSetupConfigure) {
           const input = requireRecord(message.params);
           if (!isHarnessProvider(input.provider)) throw new Error('Unknown provider.');
-          if (message.method === backendMethods.providerInstall && !installedByRemoteDaemon(input.provider)) {
+          if (message.method === backendMethods.providerInstall) {
             const connection = this.snapshot.remoteConnections.connections.find(candidate => candidate.id === connectionId);
             if (!connection || connection.status !== 'ready') throw new Error('Connect the SSH host before installing an engine.');
             await installOverSsh(this.sshConnections, connection.host, input.provider);
-            return createAppRpcResult(message.id, await this.remoteTeams.request(connectionId, backendMethods.providerRefresh, { provider: input.provider }));
+            const setup = await this.remoteTeams.request<ProviderSetupStatus>(connectionId, backendMethods.providerRefresh, { provider: input.provider });
+            if (!setup?.installed || setup.provider !== input.provider) throw new Error(`${providerDisplayName(input.provider)} installation could not be verified on the remote host.`);
+            return createAppRpcResult(message.id, setup);
           }
           return createAppRpcResult(message.id, await this.remoteTeams.request(connectionId, message.method, { provider: input.provider }));
         }
@@ -4484,13 +4575,6 @@ export class AppBackendServer {
       const authentication = event.payload;
       this.providerConnections?.observe(authentication.kind, authentication.connected, authentication);
     }
-    if (event.type === 'remoteControl.statusChanged') {
-      const status = remoteControlStatusFromUnknown(event.payload);
-      if (status) {
-        this.remoteControlStatus = status;
-        this.remoteControlStatusLoaded = true;
-      }
-    }
     const fullEvent = this.nextMainEvent(event);
     this.observeRecoveryTurn(fullEvent);
     this.options.usage?.observeEvent(fullEvent);
@@ -4624,30 +4708,8 @@ export class AppBackendServer {
     });
   }
 
-  private publishRemoteControlStatus(status: DevicePairingStatus): void {
-    this.remoteControlStatusLoaded = true;
-    this.handleBackendEvent({
-      type: 'remoteControl.statusChanged',
-      payload: status,
-    }, { persist: false });
-  }
-
   private clientStateFromSnapshot(snapshot: AppSnapshot): ClientState {
-    return clientStateFromSnapshot(snapshot, this.remoteControlStatus, this.companionAccessEnabled);
-  }
-
-  private async ensureRemoteControlStatus(): Promise<void> {
-    if (this.remoteControlStatusLoaded || !this.driverRpc) return;
-    try {
-      const status = await this.driverRpc.handle(backendMethods.remoteControlStatusGet, undefined);
-      const parsed = remoteControlStatusFromUnknown(status);
-      if (parsed) this.remoteControlStatus = parsed;
-    } catch {
-      // Remote-control status is an optional capability. Keep the safe default
-      // when an older or unavailable driver cannot answer the status request.
-    } finally {
-      this.remoteControlStatusLoaded = true;
-    }
+    return clientStateFromSnapshot(snapshot, this.companionAccessEnabled);
   }
 
   private emitRemoteBackendEvent(event: BackendPublishedEvent): void {
@@ -5363,38 +5425,18 @@ function shouldRefreshGitStatusForEvent(event: BackendPublishedEvent): boolean {
     (event.payload.tool.kind === 'command' || event.payload.tool.kind === 'fileChange');
 }
 
-function clientStateFromSnapshot(snapshot: AppSnapshot, remoteControlStatus: DevicePairingStatus, companionAccessEnabled: boolean): ClientState {
+function clientStateFromSnapshot(snapshot: AppSnapshot, companionAccessEnabled: boolean): ClientState {
   return {
     sourceFolderPath: snapshot.sourceFolder.path,
     shouldPreventDisplaySleep: snapshot.general.preventSleepWhenAgentsRun &&
       snapshot.agents.some((agent) => isActiveAgentStatus(agent.status)),
     shouldPreventDisplaySleepForRemoteAccess: snapshot.general.preventSleepWhenRemoteAccessEnabled !== false &&
-      (remoteControlStatus.status === 'connected' || companionAccessEnabled),
+      companionAccessEnabled,
   };
 }
 
 function isActiveAgentStatus(status: AgentStatus): boolean {
   return status.type === 'working' || status.type === 'awaitingInput';
-}
-
-function remoteControlStatusFromUnknown(value: unknown): DevicePairingStatus | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const record = value as Record<string, unknown>;
-  if (
-    (record.status !== 'disabled' && record.status !== 'connecting' && record.status !== 'connected' && record.status !== 'errored') ||
-    (record.serverName !== undefined && typeof record.serverName !== 'string') ||
-    (record.installationId !== undefined && typeof record.installationId !== 'string') ||
-    (record.environmentId !== undefined && record.environmentId !== null && typeof record.environmentId !== 'string')
-  ) {
-    return null;
-  }
-  const status: DevicePairingStatus = {
-    status: record.status,
-  };
-  if (typeof record.serverName === 'string') status.serverName = record.serverName;
-  if (typeof record.installationId === 'string') status.installationId = record.installationId;
-  if (record.environmentId === null || typeof record.environmentId === 'string') status.environmentId = record.environmentId;
-  return status;
 }
 
 const projectOverviewWaitSources = new Set(['backlog', 'pullRequests', 'pipelines']);

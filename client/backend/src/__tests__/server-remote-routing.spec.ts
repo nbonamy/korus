@@ -7,6 +7,7 @@ import type { HarnessProvider, RemoteConnection, AppSnapshot } from '@workspace/
 import { AppBackendServer } from '../server';
 import { ProviderDriverRpc } from '../driver-rpc';
 import { createFileRemoteSnapshotCache } from '../connections/remote-snapshot-cache';
+import { SshConnectionService } from '../connections/ssh-connections';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
 import {
   createTestSnapshot,
@@ -81,19 +82,26 @@ describe('AppBackendServer', () => {
     }
   });
 
-  it.each(['codex', 'claude'] as const)('installs %s over SSH and rechecks the owning host', async (provider) => {
+  it.each([
+    ['codex', '@openai/codex', 'codex-cli 1.0.0'],
+    ['claude', 'https://claude.ai/install.sh', '1.0.0 (Claude Code)'],
+    ['cursor', 'https://cursor.com/install', '1.0.0'],
+    ['antigravity', 'https://antigravity.google/cli/install.sh', '1.0.0'],
+  ] as const)('installs %s over SSH and rechecks the owning host', async (provider, installer, version) => {
     const snapshot = createTestSnapshot();
     const connection = readyRemoteConnection();
     snapshot.remoteConnections.connections = [connection];
-    const install = vi.fn().mockResolvedValue('1.0.0');
+    const run = vi.fn().mockResolvedValue({ stdout: version, stderr: '' });
     const remoteClients = { request: vi.fn().mockResolvedValue({ provider: provider, installed: true }), close: vi.fn() };
     const server = new AppBackendServer({ version: 'test', snapshot,
-      sshConnections: { ensureRemoteClaudeInstalled: install, ensureRemoteCodexInstalled: install } as never,
+      sshConnections: new SshConnectionService({ run }),
       remoteClients: remoteClients as never });
     try {
       expect(await server.handleMessage({ jsonrpc: '2.0', id: 'install', method: 'provider/install', params: { provider: provider, remoteConnectionId: connection.id } })).toMatchObject({ result: { provider: provider, installed: true } });
-      expect(install).toHaveBeenCalledExactlyOnceWith(connection.host);
+      expect(run).toHaveBeenCalledWith('ssh', expect.arrayContaining([connection.host, expect.stringContaining(installer)]), expect.any(Object));
       expect(remoteClients.request).toHaveBeenCalledWith(connection, 'provider/refresh', { provider: provider, _clientId: 'remote-controller' }, expect.any(Function));
+      remoteClients.request.mockResolvedValueOnce({ provider, installed: false });
+      await expect(server.handleMessage({ jsonrpc: '2.0', id: 'retry', method: 'provider/install', params: { provider, remoteConnectionId: connection.id } })).rejects.toThrow('installation could not be verified');
     } finally { await server.close(); }
   });
 
@@ -307,14 +315,14 @@ describe('AppBackendServer', () => {
       inspectVersions: vi.fn(() => new Promise<RemoteConnection>(resolve => { inspect = resolve; })),
       checkConnection: vi.fn(async (saved: RemoteConnection, providers: HarnessProvider[], progress: (detail: string) => Promise<void>) => {
         expect(providers).toStrictEqual([backend]);
-        if (backend === 'claude') await progress('Installing Claude Code…');
+        await progress(backend === 'claude' ? 'Installing Claude Code…' : 'Installing Antigravity…');
         return { ...readyRemoteConnection(), id: saved.id };
       }),
     };
     const server = new AppBackendServer({ version: 'test', snapshot,
       saveSnapshot: async value => { phases.push(value.remoteConnections.connections[0]?.detail ?? ''); },
       sshConnections: sshConnections as never,
-      remoteClients: { request: vi.fn(async (_connection: RemoteConnection, method: string) => method === 'provider/install' ? { provider: 'antigravity', installed: true } : createTestSnapshot()), closeConnection: vi.fn(), close: vi.fn() } as never,
+      remoteClients: { request: vi.fn(async () => createTestSnapshot()), closeConnection: vi.fn(), close: vi.fn() } as never,
     });
     try {
       const inspecting = server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'connections/runtime/inspect', params: { connectionId: connection.id } });

@@ -136,6 +136,9 @@
           />
         </div>
       </template>
+      <template v-if="$slots['composer-after']" #composer-after>
+        <slot name="composer-after" />
+      </template>
       <template #composer-context="{ disabled }">
         <ChatAnnotationReview
           :key="conversationKey"
@@ -708,8 +711,11 @@ defineExpose({ focusComposer, openSavedDraftPicker, saveCurrentDraft });
 }
 
 .conversation-pane__empty-actions {
-  width: min(360px, 100%);
   margin: var(--space-8) auto 0;
+}
+
+.conversation-pane__empty-actions:has(> .app-menu) {
+  width: min(360px, 100%);
   padding: var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);

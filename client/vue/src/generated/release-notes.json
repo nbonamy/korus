@@ -1,7 +1,19 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.58.4",
+  "currentVersion": "0.59.0",
   "releases": [
+    {
+      "version": "0.59.0",
+      "releasedAt": "2026-11-18",
+      "sourceSha256": "682a9ddaf5726973b0c7644ff131ec3df6db4be10e604517eae1653ebc5cc321",
+      "markdown": "### New features\n\n- **Remote Missions:** Choose a connected SSH host when starting a Mission. Workers check out repositories as needed, and you can see their progress when you reconnect.\n- **Settings search:** Search labels, descriptions and help text from the sidebar and open the first match as you type.\n\n### Improvements and fixes\n\n- **SSH agents:** Agents on SSH hosts keep working when you quit Korus or lose your connection.\n- **Worktree setup:** Open the agent as soon as Git finishes checkout and follow background setup in the conversation.\n- **Settings navigation:** Scroll the sidebar independently and use the Up and Down arrows to switch sections.\n- **Code reviews:** Removed the extra background behind the selected review round.\n- **Analytics pricing:** Estimates cover GPT-6.2 Sol usage from launch. Analytics shows reported pricing regions and uses base rates when the region is unknown.\n- **Analytics charts:** Hover dots match their series colors in dark mode."
+    },
+    {
+      "version": "0.58.5",
+      "releasedAt": "2026-11-18",
+      "sourceSha256": "5efba1b8261af85e1ce1dfa98a585129bebcba08184e515ec7db48648abef223",
+      "markdown": "### New features\n\n- **SSH hosts:** Install Cursor or Antigravity from Settings and connect using a copyable sign-in command for that host.\n- **Remote repository actions:** Use the globe beside **From branch…** or **Pull requests & issues…** to start work on a connected SSH host.\n\n### Improvements and fixes\n\n- **Mobile pairing:** Settings now uses Korus Mobile for pairing phones with Korus.\n- **Analytics:** Updated model pricing."
+    },
     {
       "version": "0.58.4",
       "releasedAt": "2026-11-18",

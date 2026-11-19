@@ -86,9 +86,7 @@ describe('BranchCurrentWorkService', { timeout: 30_000 }, () => {
       return {};
     });
     const manager = new WorktreeManager({ getInitializationMode: () => snapshot.general.worktreeInitializationMode, runCommand });
-    const initializeWorktree = vi.fn(async (source: string, folder: string) => {
-      await manager.initializeWorktree(source, folder, { backgroundInitialization: true });
-    });
+    const initializeWorktree = vi.fn((source: string, folder: string) => manager.initializeWorktree(source, folder));
     const server = new AppBackendServer({ version: 'test', snapshot, initializeWorktree });
     try {
       const response = await server.handleMessage({ jsonrpc: '2.0', id: 1, method: backendMethods.agentGitBranchWork, params: { agentId: f.agent.id, input } });

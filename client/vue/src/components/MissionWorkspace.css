@@ -140,7 +140,7 @@
   flex-direction: column;
 }
 
-.mission-workspace__workbench-scroll--stage-loading {
+.mission-workspace__workbench-scroll:has(> .mission-workspace__stage-loading) {
   display: flex;
   flex-direction: column;
 }

@@ -3,7 +3,7 @@ import { canonicalGitRemoteIdentity, cloneUrlForRemote } from '@workspace/core/g
 import type { CloneSourceRepositoryInput, ExecutionSelection, RemoteConnection, SourceRepository } from '@workspace/core/contracts';
 
 export type RemoteTargetRequest = {
-  action: 'main' | 'new-worktree';
+  action: 'main' | 'new-worktree' | 'from-branch' | 'from-work-item';
   repositoryName: string;
   repositoryKey: string;
   originUrl?: string;
@@ -25,7 +25,7 @@ export function useRemoteTarget(options: {
   listSourceRepositories: (remoteConnectionId: string) => Promise<SourceRepository[]>;
   cloneRepository: (input: CloneSourceRepositoryInput) => Promise<SourceRepository>;
   openMain: (path: string, remoteConnectionId: string, request: RemoteTargetRequest, selection?: ExecutionSelection) => Promise<void>;
-  openWorktree: (path: string, remoteConnectionId: string, request: RemoteTargetRequest) => Promise<void>;
+  openNext: (path: string, remoteConnectionId: string, request: RemoteTargetRequest) => Promise<void>;
   errorMessage?: (error: unknown) => string;
   storage?: Pick<Storage, 'getItem' | 'setItem'>;
 }) {
@@ -109,7 +109,7 @@ export function useRemoteTarget(options: {
       storage()?.setItem(lastHostKey(current.repositoryKey), connectionId);
       close();
       if (current.action === 'main') await options.openMain(path, connectionId, current, selection.value ? { ...selection.value } : undefined);
-      else await options.openWorktree(path, connectionId, current);
+      else await options.openNext(path, connectionId, current);
     } catch (cause) {
       if (mine === epoch) error.value = message(cause);
     } finally {

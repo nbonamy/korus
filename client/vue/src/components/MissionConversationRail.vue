@@ -41,9 +41,12 @@
       </header>
       <slot name="actions" />
     </div>
-    <div v-if="displayedAgentId" class="mission-conversation-rail__conversation">
-      <slot name="conversation" :agent-id="displayedAgentId" />
-      <div ref="conversationOverlay" class="mission-conversation-rail__switch-overlay" aria-hidden="true" />
+    <div v-if="$slots.draft || displayedAgentId" class="mission-conversation-rail__conversation">
+      <slot v-if="$slots.draft" name="draft" />
+      <template v-else>
+        <slot name="conversation" :agent-id="displayedAgentId" />
+        <div ref="conversationOverlay" class="mission-conversation-rail__switch-overlay" aria-hidden="true" />
+      </template>
     </div>
     <div v-else class="mission-conversation-rail__empty">
       <SparklesIcon aria-hidden="true" />

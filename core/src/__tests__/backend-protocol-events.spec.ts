@@ -155,11 +155,6 @@ function createFixtures(): EventFixtures {
         rateLimitReachedType: null,
       } },
     },
-    'remoteControl.statusChanged': {
-      ...base,
-      type: 'remoteControl.statusChanged',
-      payload: { status: 'connected' },
-    },
     'models.changed': {
       ...base,
       type: 'models.changed',

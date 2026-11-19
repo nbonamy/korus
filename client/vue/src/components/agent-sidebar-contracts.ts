@@ -1,6 +1,7 @@
 import type { Agent, OpenInApplication, OpenInApplicationCatalog, RemoteConnection, ReorderAgentsInput, ReorderRepositoriesInput, SourceBranch, Team } from '@workspace/core/contracts';
 import type { Mission } from '@workspace/core/missions';
 import type { RepositorySessionSourceTab } from './repository-session-context';
+import type { RemoteTargetRequest } from './use-remote-target';
 
 export interface AgentSidebarProps {
   agents: Agent[];
@@ -52,7 +53,7 @@ export type AgentSidebarEvents = {
   'create-agent-worktree-in-repository': [payload: SidebarRepositoryTarget];
   'create-feature-agent': [repositories: SidebarRepositoryTarget[], branch?: string];
   'create-feature-worktree': [repositories: SidebarRepositoryTarget[]];
-  'open-on-remote': [payload: { action: 'main' | 'new-worktree'; repositoryName: string; repositoryKey: string; originUrl?: string }];
+  'open-on-remote': [payload: RemoteTargetRequest];
   'duplicate-agent': [agentId: string];
   'open-agent-window': [agentId: string];
   'fork-agent': [agentId: string];

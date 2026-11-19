@@ -8,7 +8,7 @@ import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { updateSettingsInSnapshot } from '@workspace/core/settings';
 import { createMission } from '@workspace/core/missions';
 import { repositoryMetadataKeyForAgent } from '@workspace/core/workspace-sidebar';
-import type { AppSnapshot, AppApi, DevicePairingSession, MainToRendererEvent, SourceRepository } from '@workspace/core/contracts';
+import type { AppSnapshot, AppApi, MainToRendererEvent, SourceRepository } from '@workspace/core/contracts';
 import { clearConfetti } from '../../src/shared/confetti/use-confetti';
 import { stubElectronTestWindow, stubLegacyElectronTestWindow } from '../support/client';
 import { clearFirstRunOnboardingStage } from '../../src/onboarding-session';
@@ -916,13 +916,6 @@ describe('useAppState', () => {
     await state.checkRemoteConnection('ssh-1');
     await state.updateRemoteConnection('ssh-1', {} as never);
     await state.removeRemoteConnection('ssh-1');
-    await expect(state.getRemoteControlStatus()).resolves.toStrictEqual({ status: 'disabled' });
-    await expect(state.enableRemoteControl()).resolves.toStrictEqual({ status: 'disabled' });
-    await expect(state.disableRemoteControl()).resolves.toStrictEqual({ status: 'disabled' });
-    await expect(state.startDevicePairing()).rejects.toThrow('Device pairing is not available.');
-    await expect(state.checkDevicePairing({} as never)).resolves.toBe(false);
-    await expect(state.listPairedDevices('environment')).resolves.toStrictEqual([]);
-    await state.revokePairedDevice('environment', 'client');
     await state.loadDaemonStatus();
     await state.setDaemonEnabled(true);
     await state.connectWorkProvider('github');
@@ -1121,11 +1114,6 @@ describe('useAppState', () => {
       path: '/Users/nbonamy/projects/agent-workspace',
       worktrees: [],
     }];
-    const pairingSession: DevicePairingSession = {
-      pairingCode: 'ABCD-EFGH',
-      environmentId: 'environment-1',
-      expiresAt: '2026-06-05T00:10:00.000Z',
-    };
     const daemonStatus = {
       supported: true,
       installed: true,
@@ -1144,13 +1132,6 @@ describe('useAppState', () => {
       checkRemoteConnection: vi.fn().mockResolvedValue(initialSnapshot),
       updateRemoteConnection: vi.fn().mockResolvedValue(initialSnapshot),
       removeRemoteConnection: vi.fn().mockResolvedValue(initialSnapshot),
-      getRemoteControlStatus: vi.fn().mockResolvedValue({ status: 'connected', environmentId: 'environment-1' }),
-      enableRemoteControl: vi.fn().mockResolvedValue({ status: 'connecting' }),
-      disableRemoteControl: vi.fn().mockResolvedValue({ status: 'disabled' }),
-      startDevicePairing: vi.fn().mockResolvedValue(pairingSession),
-      checkDevicePairing: vi.fn().mockResolvedValue(true),
-      listPairedDevices: vi.fn().mockResolvedValue([{ clientId: 'client-1', displayName: 'Phone' }]),
-      revokePairedDevice: vi.fn().mockResolvedValue(undefined),
       getDaemonStatus: vi.fn().mockResolvedValue(daemonStatus),
       setDaemonEnabled: vi.fn().mockResolvedValue(daemonStatus),
       loadOlderAgentHistory: vi.fn().mockResolvedValue({ hasOlder: false }),
@@ -1170,13 +1151,6 @@ describe('useAppState', () => {
     await state.checkRemoteConnection('ssh-1');
     await state.updateRemoteConnection('ssh-1', { sourceFolderPath: '/srv/src' });
     await state.removeRemoteConnection('ssh-1');
-    await expect(state.getRemoteControlStatus()).resolves.toMatchObject({ status: 'connected' });
-    await expect(state.enableRemoteControl()).resolves.toMatchObject({ status: 'connecting' });
-    await expect(state.disableRemoteControl()).resolves.toMatchObject({ status: 'disabled' });
-    await expect(state.startDevicePairing()).resolves.toBe(pairingSession);
-    await expect(state.checkDevicePairing(pairingSession)).resolves.toBe(true);
-    await expect(state.listPairedDevices('environment-1')).resolves.toMatchObject([{ clientId: 'client-1' }]);
-    await state.revokePairedDevice('environment-1', 'client-1');
     await state.loadDaemonStatus();
     await state.setDaemonEnabled(true);
     await state.loadOlderAgentHistory('agent-dina');

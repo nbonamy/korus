@@ -8,17 +8,23 @@ export function missionAgent(snapshot: AppSnapshot, id: string | undefined): Age
 }
 
 export function missionTeamRepositories(snapshot: AppSnapshot, mission: Mission): string[] {
-  const team = snapshot.teams.find(candidate => candidate.id === mission.teamId);
-  const workerIds = new Set((snapshot.missions ?? []).flatMap(candidate => (
-    [...(candidate.execution?.runs.flatMap(run => run.workerId && run.workerId !== run.memberId ? [run.workerId] : []) ?? []), ...(candidate.execution?.deliveries?.map(delivery => delivery.agentId) ?? [])]
-  )));
-  return [...new Set((team?.agentIds ?? []).flatMap(id => {
-    if (workerIds.has(id)) return [];
-    const agent = missionAgent(snapshot, id);
-    if (!agent || agent.teamId !== team?.id) return [];
+  if (mission.execution?.repositoryCatalog) return mission.execution.repositoryCatalog.map(repo => repo.key);
+  return [...new Set(missionRepositoryAgents(snapshot, mission.teamId).flatMap(agent => {
     if (agent.workspace?.kind === 'git') return [agent.workspace.primaryWorktreeRoot];
     return agent.folder ? [agent.folder] : [];
   }))];
+}
+
+export function missionRepositoryAgents(snapshot: AppSnapshot, teamId: string): Agent[] {
+  const team = snapshot.teams.find(candidate => candidate.id === teamId);
+  const workerIds = new Set((snapshot.missions ?? []).flatMap(candidate => (
+    [...(candidate.execution?.runs.flatMap(run => run.workerId && (run.workerId !== run.memberId || candidate.execution?.repositoryCatalog) ? [run.workerId] : []) ?? []), ...(candidate.execution?.deliveries?.map(delivery => delivery.agentId) ?? [])]
+  )));
+  return (team?.agentIds ?? []).flatMap(id => {
+    if (workerIds.has(id)) return [];
+    const agent = missionAgent(snapshot, id);
+    return agent?.teamId === teamId ? [agent] : [];
+  });
 }
 
 export function missionWorkspaceName(mission: Mission): string {

@@ -97,7 +97,7 @@ console.log(JSON.stringify(history));
         child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'usage/get', params: {} }) + '\n');
       });
       const response = await query();
-      assert.deepEqual(response.result.cost, { usd: .003, coverage: 'complete', requests: 1, pricedRequests: 1, unpricedRequests: 0, unknownRequestExecutions: 0, reasons: [] });
+      assert.deepEqual(response.result.cost, { usd: .003, coverage: 'complete', requests: 1, pricedRequests: 1, unpricedRequests: 0, unknownRequestExecutions: 0, reasons: [], pricingRegions: ['global'] });
       const cachedHistory = pricingHistorySchema.parse(structuredClone(expected));
       const rates = cachedHistory.openai['gpt-6-sol'].cost.at(-1).rates.text;
       rates.input.price *= 2; rates.output.price *= 2;

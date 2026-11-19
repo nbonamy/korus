@@ -108,13 +108,6 @@ export const conversationMessages = {
     "retry": "Retry account check"
   },
   "remoteClaudeAuth": {
-    "connected": "Claude connected",
-    "signInRequired": "Claude needs sign-in on this host.",
-    "unavailable": "Could not check Claude on this host.",
-    "connect": "Connect Claude",
-    "checking": "Checking Claude account…",
-    "dialogTitle": "Sign in to Claude",
-    "runOnHost": "On {host}, run one of these commands:",
     "subscriptionLabel": "Claude subscription",
     "consoleLabel": "Anthropic Console (API billing)",
     "copySubscription": "Copy Claude subscription command",
@@ -125,6 +118,20 @@ export const conversationMessages = {
     "close": "Close",
     "refresh": "Refresh status",
     "retry": "Retry account check"
+  },
+  "remoteTerminalAuth": {
+    "title": "Sign in to {provider}",
+    "runOnHost": "Run the sign-in command in a terminal on {host}.",
+    "command": "Sign-in command",
+    "copy": "Copy sign-in command",
+    "copied": "Sign-in command copied",
+    "cursorHint": "Open the URL printed in your terminal to finish signing in.",
+    "antigravityHint": "Open the URL printed in your terminal, then paste the authorization code back into the terminal.",
+    "homeUnavailable": "Could not read Antigravity’s sign-in directory. Close this dialog, then choose Refresh status from the engine menu.",
+    "check": "Check sign-in",
+    "unverified": "Could not verify sign-in",
+    "pending": "Sign-in hasn’t been detected yet.",
+    "unavailable": "Could not verify sign-in on {host}. Try again after completing sign-in."
   },
   "app": {
     "applyingResourceChanges": "Applying resource changes…",
@@ -987,6 +994,7 @@ export const conversationMessages = {
     "relayNotConfiguredHint": "Set APP_COMPANION_RELAY_URL and APP_COMPANION_RELAY_PEER_ID, then restart.",
     "allowConnections": "Allow connections",
     "allowConnectionsHint": "Let paired devices connect to this laptop.",
+    "keepThisMacAwake": "Keep this Mac awake",
     "keepAwakeHint": "Keep this Mac available for mobile access while plugged in. Display sleep and automatic locking follow your system settings.",
     "pairedDevices": "Paired devices",
     "noDevices": "No paired devices",
@@ -1031,31 +1039,6 @@ export const conversationMessages = {
     "ready": "Connected",
     "checking": "Checking",
     "needsAttention": "Needs attention"
-  },
-  "settingsDevicePairingSection": {
-    "codexDevicePairing": "Codex device pairing",
-    "allowConnections": "Allow connections",
-    "keepThisMacAwake": "Keep this Mac awake",
-    "preventSleepWhenThisMacIsPluggedInAndRemoteAccessIsEnabl": "Keep this Mac available for remote access while plugged in. Display sleep and automatic locking follow your system settings.",
-    "checkingDevicePairing": "Checking device pairing…",
-    "codexDevicePairingQRCode": "Codex device pairing QR code",
-    "scanWithTheCodexMobileAppOrEnterThisCode": "Scan with the Codex mobile app or enter this code",
-    "pairedDevices": "Paired devices",
-    "refreshing": "Refreshing",
-    "addDevice": "Add device",
-    "refresh": "Refresh",
-    "revoke": "Revoke",
-    "revokePairedDevice": "Revoke paired device?",
-    "codexDevice": "Codex device",
-    "disabledByYourCodexConfiguration": "Disabled by your Codex configuration",
-    "remoteControlIsOnPairAndManageDevicesThatCanAccessThisCl": `Remote control is on. Pair and manage devices that can access this ${product.name} instance`,
-    "connectingToTheCodexRemoteControlService": "Connecting to the Codex remote-control service…",
-    "codexRemoteControlNeedsAttention": "Codex remote control needs attention",
-    "connectTheOfficialCodexMobileAppToThisAppInstance": `Connect the official Codex mobile app to this ${product.name} instance`,
-    "connectingBeforeDevicesCanBePaired": "Connecting before devices can be paired",
-    "remoteControlNeedsAttention": "Remote control needs attention",
-    "noPairedDevices": "No paired devices",
-    "codeExpired": "Code expired"
   },
   "settingsGeneralPanel": {
     "general": "General",
@@ -1193,6 +1176,9 @@ export const conversationMessages = {
   },
   "settingsSidebar": {
     "settingsCategories": "Settings categories",
+    "search": "Search settings",
+    "clearSearch": "Clear search",
+    "noMatches": "No matching settings",
     "general": "General",
     "codex": "Codex",
     "claudeCode": "Claude Code",
@@ -1321,7 +1307,6 @@ export const conversationMessages = {
     "gitMergeIsNotAvailable": "Git merge is not available.",
     "gitUpdateFromBaseIsNotAvailable": "Updating from the base branch is not available.",
     "openInIsNotAvailable": "Open In is not available.",
-    "devicePairingIsNotAvailable": "Device pairing is not available.",
   },
   "annotationPopup": {
     "annotationComment": "Annotation comment",

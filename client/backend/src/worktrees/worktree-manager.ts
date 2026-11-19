@@ -3,43 +3,16 @@ import { constants } from 'node:fs';
 import { access, copyFile, mkdir, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import type { SourceWorktree, WorktreeInitializationMode } from '@workspace/core/contracts';
+import type { WorktreeInitializationMode } from '@workspace/core/contracts';
 import type { WorktreeInitializationState } from '@workspace/core/worktree-initialization';
 import {
   createGitWorktree,
   type GitWorktreeCreateInput,
+  type GitWorktreeCreateResult,
   listSourceBranches,
 } from '../git-worktrees';
 
 const execFileAsync = promisify(execFile);
-
-type WorktreeInitializationSource = 'repository' | 'automatic' | 'none';
-
-export type WorktreeInitializationProgress =
-  | { phase: 'detecting' }
-  | {
-    phase: 'running';
-    source: Exclude<WorktreeInitializationSource, 'none'>;
-    command: string;
-    commandIndex: number;
-    commandCount: number;
-  }
-  | {
-    phase: 'complete';
-    source: WorktreeInitializationSource;
-    commands: string[];
-    copiedFiles: string[];
-  };
-
-export type PreparedWorktree = {
-  worktree: SourceWorktree;
-  created: boolean;
-  initialization?: {
-    source: WorktreeInitializationSource;
-    commands: string[];
-    copiedFiles: string[];
-  };
-};
 
 export type WorktreeManagerOptions = {
   onInitializationChanged?: (folder: string, state: WorktreeInitializationState) => void;
@@ -50,22 +23,10 @@ export type WorktreeManagerOptions = {
   runCommand?: WorktreeCommandRunner;
 };
 
-export type WorktreeCreateOptions = {
-  backgroundInitialization?: boolean;
-  /** Defer setup until a transfer has safely materialized and cleaned its source. */
-  skipInitialization?: boolean;
-  onInitializationProgress?: (progress: WorktreeInitializationProgress) => void;
-};
-
 type WorktreeCommand = {
   command: string;
   args: string[];
   display: string;
-};
-
-type WorktreeInitializationPlan = {
-  source: Exclude<WorktreeInitializationSource, 'none'>;
-  commands: WorktreeCommand[];
 };
 
 type WorktreeCommandRunner = (
@@ -99,48 +60,29 @@ export class WorktreeManager {
     this.onInitializationChanged = options.onInitializationChanged;
   }
 
-  async create(input: GitWorktreeCreateInput, options: WorktreeCreateOptions = {}): Promise<PreparedWorktree> {
-    const created = await this.createGitWorktree(input);
-    if (!created.created || options.skipInitialization) {
-      return {
-        ...created,
-        initialization: { source: 'none', commands: [], copiedFiles: [] },
-      };
-    }
-
-    const initialization = await this.initializeWorktree(input.repoPath, created.worktree.path, options);
-    return initialization ? { ...created, initialization } : created;
+  async create(input: GitWorktreeCreateInput): Promise<GitWorktreeCreateResult> {
+    const result = await this.createGitWorktree(input);
+    if (result.created) this.initializeWorktree(input.repoPath, result.worktree.path);
+    return result;
   }
 
-  /** Initialize a newly created worktree after its transferred files are safely in place. */
-  async initializeWorktree(
-    repositoryPath: string,
-    worktreePath: string,
-    options: Pick<WorktreeCreateOptions, 'backgroundInitialization' | 'onInitializationProgress'> = {},
-  ): Promise<PreparedWorktree['initialization']> {
-    if (options.backgroundInitialization) {
-      const folder = path.resolve(worktreePath);
-      const controller = new AbortController();
-      this.updateInitialization(folder, { state: 'running' });
-      const completion = this.initialize(repositoryPath, worktreePath, progress => {
-        options.onInitializationProgress?.(progress);
-        this.updateInitialization(folder, progress.phase === 'complete' ? { state: 'complete' }
-          : { state: 'running', ...(progress.phase === 'running' ? { command: progress.command } : {}) });
-      }, controller.signal).then(() => undefined, error => {
-        this.updateInitialization(folder, {
-          state: 'error',
-          ...(this.initializationStates.get(folder)?.command ? { command: this.initializationStates.get(folder)!.command } : {}),
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }).finally(() => { this.initializationJobs.delete(folder); });
-      this.initializationJobs.set(folder, { controller, completion });
-      return undefined;
-    }
-    return this.initialize(
-      repositoryPath,
-      worktreePath,
-      options.onInitializationProgress,
-    );
+  /** Start background setup after checkout and any file transfer are complete. */
+  initializeWorktree(repositoryPath: string, worktreePath: string): void {
+    const folder = path.resolve(worktreePath);
+    if (this.initializationJobs.has(folder)) return;
+    const controller = new AbortController();
+    const completion = Promise.resolve().then(() => this.initialize(repositoryPath, folder, controller.signal)).then(() => {
+      this.updateInitialization(folder, { state: 'complete' });
+    }, error => {
+      const command = this.initializationStates.get(folder)?.command;
+      this.updateInitialization(folder, {
+        state: 'error',
+        ...(command ? { command } : {}),
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }).finally(() => { this.initializationJobs.delete(folder); });
+    this.initializationJobs.set(folder, { controller, completion });
+    this.updateInitialization(folder, { state: 'running' });
   }
 
   getInitializationState(folder: string): WorktreeInitializationState | undefined {
@@ -185,82 +127,41 @@ export class WorktreeManager {
     this.onInitializationChanged?.(folder, { ...state });
   }
 
-  private async initialize(
-    repositoryPath: string,
-    worktreePath: string,
-    onProgress?: (progress: WorktreeInitializationProgress) => void,
-    signal?: AbortSignal,
-  ): Promise<PreparedWorktree['initialization']> {
+  private async initialize(repositoryPath: string, worktreePath: string, signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted();
     const mode = this.getInitializationMode();
-    if (mode === 'off') {
-      const initialization = { source: 'none' as const, commands: [], copiedFiles: [] };
-      onProgress?.({ phase: 'complete', ...initialization });
-      return initialization;
-    }
+    if (mode === 'off') return;
 
-    onProgress?.({ phase: 'detecting' });
-    const repositoryPlan = await this.repositoryPlan(worktreePath);
-    if (repositoryPlan) {
-      return this.runPlan(repositoryPlan, repositoryPath, worktreePath, [], onProgress, signal);
+    let commands = await this.repositoryCommands(worktreePath);
+    if (!commands && mode === 'automatic') {
+      await this.copyEnvironmentFiles(repositoryPath, worktreePath);
+      commands = await this.automaticCommands(worktreePath);
     }
-
-    if (mode !== 'automatic') {
-      const initialization = { source: 'none' as const, commands: [], copiedFiles: [] };
-      onProgress?.({ phase: 'complete', ...initialization });
-      return initialization;
-    }
-
-    const copiedFiles = await this.copyEnvironmentFiles(repositoryPath, worktreePath);
-    const plan = await this.automaticPlan(worktreePath);
-    if (!plan) {
-      const initialization: PreparedWorktree['initialization'] = {
-        source: copiedFiles.length > 0 ? 'automatic' : 'none',
-        commands: [],
-        copiedFiles,
-      };
-      onProgress?.({ phase: 'complete', ...initialization });
-      return initialization;
-    }
-
-    return this.runPlan(plan, repositoryPath, worktreePath, copiedFiles, onProgress, signal);
+    if (commands?.length) await this.runCommands(commands, repositoryPath, worktreePath, signal);
   }
 
-  private async runPlan(
-    plan: WorktreeInitializationPlan,
+  private async runCommands(
+    commands: WorktreeCommand[],
     repositoryPath: string,
     worktreePath: string,
-    copiedFiles: string[],
-    onProgress?: (progress: WorktreeInitializationProgress) => void,
-    signal?: AbortSignal,
-  ): Promise<PreparedWorktree['initialization']> {
-    const commands = plan.commands.map((command) => command.display);
+    signal: AbortSignal,
+  ): Promise<void> {
     const environment = {
       ...process.env,
       AGENT_WORKTREE_PATH: worktreePath,
       AGENT_WORKTREE_SOURCE_PATH: repositoryPath,
       CI: process.env.CI ?? '1',
     };
-    for (const [index, command] of plan.commands.entries()) {
-      onProgress?.({
-        phase: 'running',
-        source: plan.source,
-        command: command.display,
-        commandIndex: index,
-        commandCount: plan.commands.length,
-      });
-      signal?.throwIfAborted();
-      await this.runCommand(command.command, command.args, { cwd: worktreePath, env: environment, ...(signal ? { signal } : {}) });
+    for (const command of commands) {
+      signal.throwIfAborted();
+      this.updateInitialization(worktreePath, { state: 'running', command: command.display });
+      await this.runCommand(command.command, command.args, { cwd: worktreePath, env: environment, signal });
     }
-
-    const initialization = { source: plan.source, commands, copiedFiles };
-    onProgress?.({ phase: 'complete', ...initialization });
-    return initialization;
   }
 
-  private async copyEnvironmentFiles(repositoryPath: string, worktreePath: string): Promise<string[]> {
+  private async copyEnvironmentFiles(repositoryPath: string, worktreePath: string): Promise<void> {
     const sourcePath = await this.environmentSourcePath(repositoryPath, worktreePath);
-    if (!sourcePath) return [];
-    return copyEnvironmentFiles(sourcePath, worktreePath);
+    if (sourcePath) await copyEnvironmentFiles(sourcePath, worktreePath);
   }
 
   private async environmentSourcePath(repositoryPath: string, worktreePath: string): Promise<string | null> {
@@ -282,7 +183,7 @@ export class WorktreeManager {
     return null;
   }
 
-  private async repositoryPlan(worktreePath: string): Promise<WorktreeInitializationPlan | null> {
+  private async repositoryCommands(worktreePath: string): Promise<WorktreeCommand[] | null> {
     const setupRoot = path.join(worktreePath, '.agents', 'worktree');
     const platformSetup = this.platform === 'darwin'
       ? 'setup-macos.sh'
@@ -299,12 +200,9 @@ export class WorktreeManager {
     if (!setupPath) return null;
 
     const contents = await readFile(setupPath, 'utf8');
-    if (!contents.trim()) return { source: 'repository', commands: [] };
+    if (!contents.trim()) return [];
     const relativePath = path.relative(worktreePath, setupPath);
-    return {
-      source: 'repository',
-      commands: [this.scriptCommand(setupPath, relativePath, contents)],
-    };
+    return [this.scriptCommand(setupPath, relativePath, contents)];
   }
 
   private scriptCommand(scriptPath: string, relativePath: string, contents: string): WorktreeCommand {
@@ -321,13 +219,12 @@ export class WorktreeManager {
     return { command: '/bin/sh', args: [scriptPath], display: relativePath };
   }
 
-  private async automaticPlan(worktreePath: string): Promise<WorktreeInitializationPlan | null> {
-    const commands = [
+  private async automaticCommands(worktreePath: string): Promise<WorktreeCommand[]> {
+    return [
       ...await nodeCommands(worktreePath),
       ...await pythonCommands(worktreePath, this.platform),
       ...await goCommands(worktreePath),
     ];
-    return commands.length > 0 ? { source: 'automatic', commands } : null;
   }
 }
 
@@ -350,22 +247,19 @@ const environmentScanExcludedDirectories = new Set([
 
 const environmentTemplateSuffixes = ['.dist', '.example', '.sample', '.template'];
 
-async function copyEnvironmentFiles(sourcePath: string, worktreePath: string): Promise<string[]> {
+async function copyEnvironmentFiles(sourcePath: string, worktreePath: string): Promise<void> {
   const relativePaths = await findEnvironmentFiles(sourcePath, worktreePath);
-  const copiedFiles: string[] = [];
   for (const relativePath of relativePaths) {
     const destinationPath = path.join(worktreePath, relativePath);
     if (await exists(destinationPath)) continue;
     await mkdir(path.dirname(destinationPath), { recursive: true });
     try {
       await copyFile(path.join(sourcePath, relativePath), destinationPath, constants.COPYFILE_EXCL);
-      copiedFiles.push(relativePath);
     } catch (error) {
       if (isFileExistsError(error)) continue;
       throw error;
     }
   }
-  return copiedFiles;
 }
 
 async function findEnvironmentFiles(

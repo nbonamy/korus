@@ -199,12 +199,6 @@ Host bad;alias
     expect(commands.some((command) => command.includes('ln -sfn'))).toBe(false);
   });
 
-  it('launches the SSH daemon as the exclusive owner of the host home', () => {
-    const command = sshStdioTransport('devbox')!.args.at(-1)!;
-    expect(command).toContain('exec env APP_EXCLUSIVE_HOME=1 node');
-    expect(command).toContain('--stdio');
-  });
-
   it('keeps a Claude-only host ready without installing Codex', async () => {
     const run = vi.fn(async (command: string, args: string[]) => {
       const remoteCommand = args.at(-1) ?? '';
@@ -250,7 +244,7 @@ Host bad;alias
     expect(run.mock.calls.some(([, args]) => args.at(-1)?.includes('https://claude.ai/install.sh'))).toBe(false);
   });
 
-  it('prefers a remote daemon socket before falling back to one-shot stdio', () => {
+  it('connects over SSH to the background socket daemon', () => {
     expect(sshStdioTransport('devbox')).toStrictEqual({
       type: 'ssh-stdio',
       command: 'ssh',
@@ -258,7 +252,7 @@ Host bad;alias
         '-T', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3',
         '-o', 'StrictHostKeyChecking=accept-new',
         'devbox',
-        remoteEnvironmentCommand(`node ~/${product.homeDirectory}/daemon.mjs connect || { code=$?; [ "$code" -eq 1 ] || exit "$code"; exec env APP_EXCLUSIVE_HOME=1 node ~/${product.homeDirectory}/daemon.mjs --stdio; }`),
+        remoteEnvironmentCommand(`exec node ~/${product.homeDirectory}/daemon.mjs connect --start`),
       ],
     });
   });
@@ -291,7 +285,7 @@ Host bad;alias
       status: 'ready',
     });
 
-    expect(run.mock.calls.some(([, args]) => args.at(-1)?.includes('rm -f') && !args.at(-1)?.includes('ln -sfn'))).toBe(false);
+    expect(run.mock.calls.some(([, args]) => args.at(-1)?.includes(`~/${product.homeDirectory}/provider-tokens.json`))).toBe(false);
   });
 
   it('records connection errors without throwing', async () => {

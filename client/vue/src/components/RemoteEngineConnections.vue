@@ -9,7 +9,7 @@
           :installed="engine.installed"
           :title="providerDisplayName(engine.provider)"
           :authentication="engine.authentication"
-          :error="engine.authentication?.kind === 'cursor' ? engine.authentication.state.error || engine.error : engine.error"
+          :error="engineRowError(engine)"
           :connected="engine.connected"
           :enabled="engine.enabled"
           :busy="busy"
@@ -28,7 +28,18 @@
         />
       </ProviderUpdateRow>
       <RemoteCodexAuthentication v-if="signingIn === engine.provider && engine.provider === 'codex'" :connection="connection" @connected="finishConnection" @cancel="signingIn = null" @activity="authActivity = $event" />
-      <RemoteClaudeAuthentication v-if="signingIn === engine.provider && engine.provider === 'claude'" :connection="connection" :authentication="engine.authentication?.kind === 'claude' ? engine.authentication.state : undefined" @connected="finishConnection" @cancel="signingIn = null" @activity="authActivity = $event" />
+      <RemoteTerminalAuthentication
+        v-else-if="signingIn === engine.provider"
+        :connection="connection"
+        :provider="engine.provider"
+        :commands="terminalSignInCommands(engine)"
+        :hint="engine.provider === 'cursor' ? translate('surface.remoteTerminalAuth.cursorHint') : engine.provider === 'antigravity' ? translate('surface.remoteTerminalAuth.antigravityHint') : undefined"
+        :issue="terminalSignInIssue(engine)"
+        @checked="engine.authentication = $event"
+        @connected="finishConnection"
+        @cancel="signingIn = null"
+        @activity="authActivity = $event"
+      />
     </template>
     <p v-if="error" role="alert">{{ error }}</p>
     <button v-if="error" class="app-button app-button--tertiary agent-ui-interactive" type="button" :disabled="busy" @click="refresh">{{ $t('surface.remoteClaudeAuth.retry') }}</button>
@@ -44,7 +55,7 @@ import { providerDisplayName } from '@workspace/core/provider-driver';
 import { appApi } from '../platform-api';
 import { translate } from '../i18n';
 import RemoteCodexAuthentication from './RemoteCodexAuthentication.vue';
-import RemoteClaudeAuthentication from './RemoteClaudeAuthentication.vue';
+import RemoteTerminalAuthentication from './RemoteTerminalAuthentication.vue';
 import SettingsEngineConnectionRow from './SettingsEngineConnectionRow.vue';
 import ProviderUpdateRow from './ProviderUpdateRow.vue';
 
@@ -105,15 +116,57 @@ async function setEnabled(provider: HarnessProvider, enabled: boolean) {
   } finally { if (expected === revision) busy.value = false; }
 }
 async function connect(engine: ProviderConnection) {
-  if (!engine.connected && engine.provider === 'cursor') { error.value = engine.authentication?.kind === 'cursor' && engine.authentication.state.error || translate('cursor.remoteLogin'); return; }
-  if (!engine.connected && engine.provider === 'antigravity') { error.value = translate('antigravity.remoteLogin'); return; }
+  error.value = '';
   if (!engine.connected) { signingIn.value = engine.provider; return; }
   busy.value = true;
-  error.value = '';
   const expected = revision;
   try { await setEnabled(engine.provider, true); }
   catch { if (expected === revision) error.value = translate('engineConnection.updateFailed'); }
   finally { if (expected === revision) busy.value = false; }
+}
+
+function quoteShellArgument(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function engineRowError(engine: ProviderConnection): string | undefined {
+  if (engine.authentication?.kind === 'cursor' && engine.authentication.state.error) return engine.authentication.state.error;
+  if (engine.installed && !engine.connected && engine.error) return translate('surface.remoteTerminalAuth.unverified');
+  return engine.error;
+}
+
+function antigravitySignInHome(engine: ProviderConnection): string | undefined {
+  return (engine.authentication?.kind === 'antigravity' ? engine.authentication.state.homePath : undefined)
+    || providerSetup.value.find(setup => setup.provider === engine.provider)?.homePath;
+}
+
+function terminalSignInIssue(engine: ProviderConnection): string | undefined {
+  if (engine.provider === 'antigravity' && !antigravitySignInHome(engine)) return translate('surface.remoteTerminalAuth.homeUnavailable');
+  if (engine.authentication?.kind === 'cursor' && engine.authentication.state.supported === false) return engine.authentication.state.error;
+  return undefined;
+}
+
+function terminalSignInCommands(engine: ProviderConnection) {
+  if (engine.provider !== 'claude') {
+    const home = engine.provider === 'antigravity' ? antigravitySignInHome(engine) : undefined;
+    if (engine.provider === 'antigravity' && !home) return [];
+    const command = home ? `agy acp --login --gemini-dir ${quoteShellArgument(home)}` : 'NO_OPEN_BROWSER=1 agent login';
+    return [{
+      label: translate('surface.remoteTerminalAuth.command'),
+      command: `PATH="$HOME/.local/bin:$PATH" ${command}`,
+      copyLabel: translate('surface.remoteTerminalAuth.copy'),
+      copiedLabel: translate('surface.remoteTerminalAuth.copied'),
+    }];
+  }
+  const state = engine.authentication?.kind === 'claude' ? engine.authentication.state : undefined;
+  const env = state?.configDirectory ? `CLAUDE_CONFIG_DIR=${quoteShellArgument(state.configDirectory)}` : 'env -u CLAUDE_CONFIG_DIR';
+  const executable = state?.executablePath ? quoteShellArgument(state.executablePath) : 'claude';
+  return [
+    { label: translate('surface.remoteClaudeAuth.subscriptionLabel'), command: `${env} ${executable} auth login --claudeai`,
+      copyLabel: translate('surface.remoteClaudeAuth.copySubscription'), copiedLabel: translate('surface.remoteClaudeAuth.copiedSubscription') },
+    { label: translate('surface.remoteClaudeAuth.consoleLabel'), command: `${env} ${executable} auth login --console`,
+      copyLabel: translate('surface.remoteClaudeAuth.copyConsole'), copiedLabel: translate('surface.remoteClaudeAuth.copiedConsole') },
+  ];
 }
 async function disconnect(provider: HarnessProvider) {
   busy.value = true;

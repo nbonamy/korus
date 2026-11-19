@@ -37,7 +37,12 @@ describe('LocalSocketRpcServer', () => {
       id: 'health',
       result: { method: 'backend/health/get' },
     });
-    socket.destroy();
+    const disconnected = new Promise<void>(resolve => socket.once('close', resolve));
+    try {
+      await Promise.all([server.stop(), disconnected]);
+    } finally {
+      socket.destroy();
+    }
   });
 
   it('broadcasts backend events to connected clients', async () => {

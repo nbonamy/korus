@@ -622,33 +622,6 @@ describe('AppBackendServer', () => {
     });
   });
 
-  it('routes device pairing requests through the Codex driver RPC boundary', async () => {
-    const status = { status: 'connected', environmentId: 'environment-1' };
-    const handle = vi.fn().mockResolvedValue(status);
-    const server = new AppBackendServer({
-      version: 'test-version',
-      pid: 123,
-      driverRpc: {
-        handle,
-        onEvent: vi.fn(() => () => undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      } as unknown as ProviderDriverRpc,
-    });
-
-    await expect(server.handleMessage({
-      jsonrpc: '2.0', id: 'pairing-status', method: 'remoteControl/status/get',
-    })).resolves.toStrictEqual({ jsonrpc: '2.0', id: 'pairing-status', result: status });
-    await expect(server.handleMessage({
-      jsonrpc: '2.0', id: 'pairing-revoke', method: 'remoteControl/client/revoke',
-      params: { environmentId: 'environment-1', clientId: 'client-1' },
-    })).resolves.toStrictEqual({ jsonrpc: '2.0', id: 'pairing-revoke', result: status });
-
-    expect(handle).toHaveBeenCalledWith('remoteControl/status/get', undefined);
-    expect(handle).toHaveBeenCalledWith('remoteControl/client/revoke', {
-      environmentId: 'environment-1', clientId: 'client-1',
-    });
-  });
-
   it('returns an app snapshot with the backend event sequence', async () => {
     const server = new AppBackendServer({
       version: 'test-version',
@@ -729,45 +702,27 @@ describe('AppBackendServer', () => {
     });
   });
 
-  it('hydrates remote-control status before deriving initial client state', async () => {
+  it('keeps the display awake for remote access only while companion access is on', async () => {
     const snapshot = createTestSnapshot();
-    snapshot.general.preventSleepWhenAgentsRun = true;
     snapshot.general.preventSleepWhenRemoteAccessEnabled = true;
-    const handle = vi.fn(async (method: string) => method === backendMethods.remoteControlStatusGet ? {
-      status: 'connected',
-      serverName: 'Codex remote control',
-      installationId: 'installation-1',
-      environmentId: 'environment-1',
-    } : undefined);
     const server = new AppBackendServer({
       version: 'test-version',
       pid: 123,
       snapshot,
       driverRpc: {
-        handle,
+        handle: vi.fn(),
         onEvent: vi.fn(() => () => undefined),
         close: vi.fn().mockResolvedValue(undefined),
       } as unknown as ProviderDriverRpc,
     });
 
     await server.initialize();
-    await expect(server.handleMessage({
-      jsonrpc: '2.0',
-      id: 'snapshot',
-      method: 'snapshot/get',
-    })).resolves.toMatchObject({
-      result: {
-        clientState: {
-          shouldPreventDisplaySleepForRemoteAccess: true,
-        },
-      },
-    });
-    expect(handle).toHaveBeenCalledWith(backendMethods.remoteControlStatusGet, undefined);
+    const clientState = () => server.handleMessage({ jsonrpc: '2.0', id: 'client-state', method: backendMethods.clientStateGet });
+    await expect(clientState()).resolves.toMatchObject({ result: { shouldPreventDisplaySleepForRemoteAccess: false } });
     server.setCompanionAccessEnabled(true);
+    await expect(clientState()).resolves.toMatchObject({ result: { shouldPreventDisplaySleepForRemoteAccess: true } });
     server.setCompanionAccessEnabled(false);
-    await expect(server.handleMessage({ jsonrpc: '2.0', id: 'codex-still-enabled', method: backendMethods.clientStateGet })).resolves.toMatchObject({
-      result: { shouldPreventDisplaySleepForRemoteAccess: true },
-    });
+    await expect(clientState()).resolves.toMatchObject({ result: { shouldPreventDisplaySleepForRemoteAccess: false } });
     await server.close();
   });
 
@@ -881,18 +836,14 @@ describe('AppBackendServer', () => {
     }]);
     script.emit({
       provider: 'codex',
-      type: 'remoteControl.statusChanged',
-      payload: {
-        status: 'connected',
-        serverName: 'Codex remote control',
-        installationId: 'installation-1',
-        environmentId: 'environment-1',
-      },
+      agentId: 'agent-dina',
+      type: 'agent.statusChanged',
+      payload: { type: 'idle' },
     });
     expect(events).toContainEqual(expect.objectContaining({
       seq: 2,
-      type: 'remoteControl.statusChanged',
-      clientState: expect.objectContaining({ shouldPreventDisplaySleepForRemoteAccess: true }),
+      type: 'agent.statusChanged',
+      clientState: expect.objectContaining({ shouldPreventDisplaySleep: false }),
     }));
     await expect(server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'snapshot/get' })).resolves.toMatchObject({
       result: {

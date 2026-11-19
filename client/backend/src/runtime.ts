@@ -25,6 +25,7 @@ import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import path from 'node:path';
 import { sendAgentPrompt } from '@workspace/core/agent-chat-service';
 import type { Agent, ProviderConversationRef, SystemPermissionsStatus } from '@workspace/core/contracts';
+import { automationExecutionIsActive } from '@workspace/core/automation-manager';
 import { formatConversationTitle, shouldSyncConversationTitleFromAgent } from '@workspace/core/conversation-title';
 import type { AgentProviderDriver, ProviderSendResult } from '@workspace/core/provider-driver';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
@@ -87,6 +88,7 @@ export type DaemonRuntimeOptions = {
 
 export type DaemonRuntime = {
   server: AppBackendServer;
+  prepareForRestart(): void;
   stop(): Promise<void>;
 };
 
@@ -151,7 +153,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   const agentGitService = new AgentGitService(
     undefined,
     undefined,
-    async (input) => (await worktreeManager.create(input)).worktree,
+    async input => (await worktreeManager.create(input)).worktree,
     folder => worktreeManager.cancelInitialization(folder),
   );
   const agentCreation = new AgentCreationService(snapshot, folder => worktreeManager.getInitializationState(folder));
@@ -415,9 +417,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
       },
     }),
     worktreeInitializationForFolder: folder => worktreeManager.getInitializationState(folder),
-    initializeWorktree: async (repositoryPath, folder) => {
-      await worktreeManager.initializeWorktree(repositoryPath, folder, { backgroundInitialization: true });
-    },
+    initializeWorktree: (repositoryPath, folder) => worktreeManager.initializeWorktree(repositoryPath, folder),
     requirements,
     usage,
     computerUsePluginAvailable: () => computerUseAvailable && snapshot.general.plugins?.computerUseEnabled === true,
@@ -501,6 +501,13 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
 
   return {
     server,
+    prepareForRestart() {
+      if (snapshot.agents.some(agent => agent.status.type === 'working' || agent.status.type === 'awaitingInput' || agent.pendingPrompts?.length)
+        || snapshot.automations.some(automation => automation.executionLog.some(automationExecutionIsActive))) {
+        throw new Error('Finish active turns, pending input and automation runs on this host before updating Korus.');
+      }
+      scheduler.stop();
+    },
     async stop() {
       stopWatchingEventLoop();
       scheduler.stop();

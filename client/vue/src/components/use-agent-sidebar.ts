@@ -24,6 +24,14 @@ import { useAgentSidebarOrganization } from './use-agent-sidebar-organization';
 import { useAgentSidebarMotion } from './use-agent-sidebar-motion';
 import ScrollHintRows from './ScrollHintRows.vue';
 import type { AgentSidebarProps, AgentSidebarEmit, SidebarRepositoryTarget } from './agent-sidebar-contracts';
+import type { RemoteTargetRequest } from './use-remote-target';
+
+const remoteRepositoryActions = new Map<string, RemoteTargetRequest['action']>([
+  ['default-branch:remote', 'main'],
+  ['from-branch:remote', 'from-branch'],
+  ['new-worktree:remote', 'new-worktree'],
+  ['from-work-item:remote', 'from-work-item'],
+]);
 
 export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit) {
   const { t } = useI18n();
@@ -318,11 +326,12 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
         disabled: !defaultBranch,
         ...remoteAction('default-branch:remote'),
       },
-      { id: 'from-branch', type: 'action', label: t('sidebar.fromBranch'), icon: GitBranchIcon },
+      { id: 'from-branch', type: 'action', label: t('sidebar.fromBranch'), icon: GitBranchIcon, ...remoteAction('from-branch:remote') },
       { id: 'new-worktree', type: 'action', label: t('sidebar.newWorktree'), icon: GitBranchIcon, ...remoteAction('new-worktree:remote') },
       {
         id: 'from-work-item', type: 'action', icon: GitPullRequestIcon,
         label: t(canonicalGitRemoteIdentity(group.originUrl ?? '')?.startsWith('gitlab.com/') ? 'sidebar.fromIssueOrMergeRequest' : 'sidebar.fromIssueOrPullRequest'),
+        ...remoteAction('from-work-item:remote'),
       },
     ];
   }
@@ -389,9 +398,10 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
   ): void {
     if (group.kind !== 'repository' || !group.repositoryRoot) return;
     const payload = sectionTarget(group);
-    if (itemId === 'default-branch:remote' || itemId === 'new-worktree:remote') {
+    const remoteAction = remoteRepositoryActions.get(itemId);
+    if (remoteAction) {
       emit('open-on-remote', {
-        action: itemId === 'default-branch:remote' ? 'main' : 'new-worktree',
+        action: remoteAction,
         repositoryName: group.label,
         repositoryKey: group.repositoryKey ?? group.id,
         ...(group.originUrl ? { originUrl: group.originUrl } : {}),

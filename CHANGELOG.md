@@ -2,6 +2,34 @@
 
 All notable Korus changes are recorded here.
 
+## [0.59.0] - 2026-11-18
+
+### New features
+
+- **Remote Missions:** Choose a connected SSH host when starting a Mission. Workers check out repositories as needed, and you can see their progress when you reconnect.
+- **Settings search:** Search labels, descriptions and help text from the sidebar and open the first match as you type.
+
+### Improvements and fixes
+
+- **SSH agents:** Agents on SSH hosts keep working when you quit Korus or lose your connection.
+- **Worktree setup:** Open the agent as soon as Git finishes checkout and follow background setup in the conversation.
+- **Settings navigation:** Scroll the sidebar independently and use the Up and Down arrows to switch sections.
+- **Code reviews:** Removed the extra background behind the selected review round.
+- **Analytics pricing:** Estimates cover GPT-6.2 Sol usage from launch. Analytics shows reported pricing regions and uses base rates when the region is unknown.
+- **Analytics charts:** Hover dots match their series colors in dark mode.
+
+## [0.58.5] - 2026-11-18
+
+### New features
+
+- **SSH hosts:** Install Cursor or Antigravity from Settings and connect using a copyable sign-in command for that host.
+- **Remote repository actions:** Use the globe beside **From branch…** or **Pull requests & issues…** to start work on a connected SSH host.
+
+### Improvements and fixes
+
+- **Mobile pairing:** Settings now uses Korus Mobile for pairing phones with Korus.
+- **Analytics:** Updated model pricing.
+
 ## [0.58.4] - 2026-11-18
 
 ### Improvements and fixes

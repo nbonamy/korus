@@ -29,9 +29,9 @@ log and socket paths, npm scripts and launchd labels stay brand-neutral.
   executable detection, home preparation and resource sharing;
   `ProviderSetup` owns locking, serialization, persistence and driver replacement.
   Setup capabilities describe mutable home/skill choices and installation policy.
-  A controller-provided installer needs an explicit grant; local installation
-  support alone does not grant remote installation. Shared controls consume this
-  policy, with registered compatibility defaults for older daemons.
+  A controller-provided installer needs a grant from setup capabilities or the
+  controller's built-in registration when an older daemon omits that field.
+  Local installation support alone does not grant remote installation.
   Authentication enters through the optional `AgentProviderDriver.authenticate`
   capability; the server caches the app-owned result and never interprets
   credentials or probes provider CLIs itself. `AgentProviderDriver.coordinationPolicy`
@@ -145,7 +145,7 @@ The protocol is transport-neutral JSON-RPC 2.0, one message per line.
 | --- | --- |
 | stdio (`korusd --stdio`) | bundled local backend; same framing SSH uses |
 | Unix socket (`korusd serve`, `APP_HOME/daemon.sock`) | optional always-on single-host daemon |
-| SSH stdio | remote locations: noninteractive SSH with keepalives, an app-private Node runtime, and a version-checked socket bridge or one-shot backend |
+| SSH stdio | remote locations: noninteractive SSH with keepalives and a version-checked bridge to the host's background socket daemon |
 
 - Electron's default `APP_BACKEND_MODE=auto` connects to a running local daemon,
   else starts the bundled stdio process. On reconnect it retries the same
@@ -733,8 +733,11 @@ and confirms activation through the remote backend. System Node and shell
 profiles remain user-owned. SSH uses key authentication, keepalives and first-use
 host-key trust; changed host keys remain rejected.
 
-Updates close the app's SSH client and reconnect after installation. Known active
-turns or pending input block the update. Retrying a saved host retains its
+Updates close the app's SSH client and reconnect after installation. After
+verifying the replacement, setup asks the managed service to shut down and takes
+the same home lock before swapping the bundle. The service refuses while it owns active turns,
+pending input or automation runs. Externally managed services are stopped by
+their operator. Retrying a saved host retains its
 connection identity and team pointers. Failed activation is persisted as a
 recoverable connection error, rather than reported as ready. Version inspection
 does not install software or close a running client.
@@ -742,23 +745,25 @@ does not install software or close a running client.
 Setup mirrors a local `provider-tokens.json` when present; absence of a local file
 preserves the remote host's credentials. It never copies app state or conversation
 data. Only selected providers are installed; existing engine installations are
-preserved. Engine installation runs on the owning host: Codex uses the user's
-`~/.local` npm prefix and Claude uses its native installer. Detection, account
-sign-in and provider upgrades belong to that host, independently of Korus updates.
+preserved. Engine installation runs over SSH on the owning host. Codex uses the
+user's `~/.local` npm prefix. Claude, Cursor and Antigravity use their vendor
+installers. The controller verifies the CLI and asks the remote daemon to refresh
+discovery after an explicit engine install. Detection, account sign-in and
+provider upgrades belong to that host, independently of Korus updates.
 User-local Codex upgrades verify package ownership and retain the `~/.local` npm
 prefix even when the Node runtime has a different default global directory.
 Version discovery accepts the previous daemon CLI name for hosts not yet upgraded.
 
-An SSH daemon owns its host's home exclusively. Each connection launches its own
-stdio daemon with its own in-memory state, so two live daemons on one home overwrite
-each other's saves and agents or teams vanish and reappear. The launch sets
-`APP_EXCLUSIVE_HOME=1`, which holds a SQLite exclusive transaction in
-`daemon-lock.sqlite` for the daemon's lifetime. The OS releases it on process exit;
-the lock database is never removed for stale-owner recovery. `daemon.lock` contains
-diagnostic owner metadata only. A live owner is waited for briefly while it shuts
-down; otherwise the new daemon exits with a message naming the duplicate session. Two saved
-connections to the same machine therefore cannot both be active. Local and
-`serve` daemons do not take the lock.
+`connect --start` starts a detached `serve --ssh-service` when there is no Unix
+socket listener. SSH carries RPC between the controller and this service. A
+desktop quit or network disconnect removes only the bridge, so the remote daemon
+keeps its agents and their in-memory conversation state. Operations requiring the
+controller, such as cross-host collaboration calls, still require a connection.
+
+The SSH service holds a SQLite exclusive transaction in `daemon-lock.sqlite`
+before loading state and for the lifetime of the runtime. An exclusive stdio
+owner holds the same lock. The OS releases it on process exit, and the lock
+database survives recovery. `daemon.lock` contains diagnostic owner metadata.
 
 Every connect, install and reconnect (the read-only inspection) links the host's `codex` and `claude` into the
 private `bin` directory, which the SSH launch puts first on PATH, and drops the link
@@ -1114,8 +1119,10 @@ predicates use their authored strict/inclusive operators, matching overrides mer
 in order, and matching multipliers affect only their named categories. Included
 cache reads/writes are subtracted from input and included reasoning is separated
 from ordinary output before applying rates. Missing usage, inclusion semantics,
-cache rates/lifetimes, context, region, tier or model evidence leaves a request
-unpriced with a reason. Codex executions and legacy Claude executions without
+cache rates/lifetimes, context, tier or model evidence leaves a request
+unpriced with a reason. An unreported pricing region uses the global rate for
+the estimate. Analytics distinguishes unreported regions from region evidence
+supplied by the provider. Codex executions and legacy Claude executions without
 request observations are priced from their retained model and measured token
 counters, with cached reads priced separately, normal pricing for missing tiers,
 and no long-context premium. Legacy Claude cache creation uses the default

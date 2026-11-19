@@ -320,6 +320,8 @@ restores its client-local conversation selection; Mission workers are not separa
 Palette entries declare their sections explicitly and preserve owning-menu order.
 Settings destinations share their icons, labels and host/provider availability in
 `components/settings-tabs.ts`, consumed by both the sidebar and command search.
+The sidebar's settings search indexes the panels' existing message keys and
+static labels in `components/settings-search.ts`. Inactive panels stay unmounted.
 Git command availability and dispatch come from the focused agent's workflow control,
 which retains ownership of operation state, confirmations and host routing.
 Diff display preferences affect presentation only. The daemon retains complete Git

@@ -51,7 +51,6 @@ const rendererEventTypes = [
   'conversation.sessionPatch',
   'provider.authenticationChanged',
   'client.connectionChanged',
-  'remoteControl.statusChanged',
   'models.changed',
   'skills.changed',
   'client.markdownDisplayRequested',
@@ -82,11 +81,6 @@ const rendererOnlyEvents = [
   {
     ...base,
     type: 'client.connectionChanged',
-    payload: { status: 'connected' },
-  },
-  {
-    ...base,
-    type: 'remoteControl.statusChanged',
     payload: { status: 'connected' },
   },
   {

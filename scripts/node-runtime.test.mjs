@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -29,6 +29,40 @@ test('rejects tampered downloads before extracting or installing them', async ()
     assert.equal(extracted, false);
     await assert.rejects(readFile(path.join(root, 'out/node')), { code: 'ENOENT' });
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('stages a Windows runtime ZIP without shell or archive tools on PATH', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'node-runtime-zip-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const directory = 'node-v22.0.0-win-x64';
+  const fixture = path.join(root, directory);
+  await mkdir(fixture);
+  await writeFile(path.join(fixture, 'node.exe'), 'fixture executable');
+  await writeFile(path.join(fixture, 'LICENSE'), 'fixture notices');
+  await writeFile(path.join(fixture, 'npm.cmd'), 'not shipped');
+  const archivePath = path.join(root, 'fixture.zip');
+  if (process.platform === 'win32') {
+    execFileSync('tar.exe', ['-caf', archivePath, directory], { cwd: root });
+  } else {
+    execFileSync('zip', ['-qr', archivePath, directory], { cwd: root });
+  }
+  const archive = await readFile(archivePath);
+  const sha256 = createHash('sha256').update(archive).digest('hex');
+  const outputDir = path.join(root, 'out');
+  const originalPath = process.env.PATH;
+  try {
+    process.env.PATH = root;
+    const executable = await prepareNodeRuntime({
+      platform: 'win32', arch: 'x64', outputDir, cacheDir: path.join(root, 'cache'),
+      config: { version: '22.0.0', checksums: { 'win32-x64': sha256 } },
+    }, { fetch: async () => new Response(archive) });
+    assert.equal(await readFile(executable, 'utf8'), 'fixture executable');
+    assert.equal(await readFile(path.join(outputDir, 'LICENSE'), 'utf8'), 'fixture notices');
+    assert.deepEqual((await readdir(outputDir)).sort(), ['LICENSE', 'node.exe', 'release.json']);
+  } finally {
+    if (originalPath === undefined) delete process.env.PATH;
+    else process.env.PATH = originalPath;
+  }
 });
 
 test('extracts only the runtime and notices, verifies cached bytes, and replaces a corrupt cache', async () => {

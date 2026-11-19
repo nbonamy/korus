@@ -31,6 +31,9 @@
         <button
           type="button"
           class="settings-connections-panel__identity agent-ui-interactive"
+          data-appearance="text"
+          data-focus="fill"
+          data-selection="none"
           :aria-expanded="isExpanded(connection)"
           :aria-controls="`connection-details-${connection.id}`"
           :disabled="connectionBusy(connection)"
@@ -101,18 +104,6 @@
     </FormSection>
 
     <SettingsMobileSection v-if="companionControl" :control="companionControl" :settings="settings" :update-settings="updateSettings" />
-
-    <SettingsDevicePairingSection
-      :settings="settings"
-      :update-settings="updateSettings"
-      :get-status="getRemoteControlStatus"
-      :enable="enableRemoteControl"
-      :disable="disableRemoteControl"
-      :start="startDevicePairing"
-      :check="checkDevicePairing"
-      :list-devices="listPairedDevices"
-      :revoke-device="revokePairedDevice"
-    />
 
     <FormDialog
       v-model="settingsDialogVisible"
@@ -249,7 +240,7 @@ import { harnessProviders } from '@workspace/core/contracts/shared';
 import type { ProviderConnection } from '@workspace/core/contracts/provider-setup';
 import { appMessageBox } from '../shared/dialog/message-box';
 import { computed, onMounted, ref } from 'vue';
-import type { AddSshConnectionInput, Agent, DevicePairingSession, DevicePairingStatus, PairedDevice, RemoteConnection, SourceFolderListing, SourceFolderListInput, SshHostCandidate, UpdateRemoteConnectionInput, UpdateSettingsInput } from '@workspace/core/contracts';
+import type { AddSshConnectionInput, Agent, RemoteConnection, SourceFolderListing, SourceFolderListInput, SshHostCandidate, UpdateRemoteConnectionInput, UpdateSettingsInput } from '@workspace/core/contracts';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { AlertTriangleIcon, ChevronDown, DotsVerticalIcon, RefreshIcon, SettingsIcon, Trash2Icon } from '../shared/icons/app-icons';
@@ -259,7 +250,6 @@ import RemoteFolderPickerDialog from './RemoteFolderPickerDialog.vue';
 import RemoteEngineConnections from './RemoteEngineConnections.vue';
 import SettingsPanelFrame from './SettingsPanelFrame.vue';
 import SettingsMobileSection from './SettingsMobileSection.vue';
-import SettingsDevicePairingSection from './SettingsDevicePairingSection.vue';
 import SettingsIntro from './SettingsIntro.vue';
 import FormSection from '../shared/form/FormSection.vue';
 
@@ -277,13 +267,6 @@ const props = withDefaults(defineProps<{
   settings?: { preventSleepWhenRemoteAccessEnabled: boolean };
   updateSettings?: (input: UpdateSettingsInput) => Promise<void>;
   companionControl?: (input: import('@workspace/core/companion-protocol').CompanionControl) => Promise<import('@workspace/core/companion-protocol').CompanionControlResult>;
-  getRemoteControlStatus?: () => Promise<DevicePairingStatus>;
-  enableRemoteControl?: () => Promise<DevicePairingStatus>;
-  disableRemoteControl?: () => Promise<DevicePairingStatus>;
-  startDevicePairing?: () => Promise<DevicePairingSession>;
-  checkDevicePairing?: (session: DevicePairingSession) => Promise<boolean>;
-  listPairedDevices?: (environmentId: string) => Promise<PairedDevice[]>;
-  revokePairedDevice?: (environmentId: string, clientId: string) => Promise<void>;
 }>(), {
   addSshConnection: async () => undefined,
   checkRemoteConnection: async () => undefined,
@@ -294,13 +277,6 @@ const props = withDefaults(defineProps<{
   agents: () => [],
   updateRemoteConnection: async () => undefined,
   removeRemoteConnection: async () => undefined,
-  getRemoteControlStatus: async () => ({ status: 'disabled' as const }),
-  enableRemoteControl: async () => ({ status: 'disabled' as const }),
-  disableRemoteControl: async () => ({ status: 'disabled' as const }),
-  startDevicePairing: async () => ({ pairingCode: '', environmentId: '', expiresAt: '' }),
-  checkDevicePairing: async () => false,
-  listPairedDevices: async () => [],
-  revokePairedDevice: async () => undefined,
   settings: () => ({ preventSleepWhenRemoteAccessEnabled: true }),
   updateSettings: async () => undefined,
 });
@@ -681,6 +657,10 @@ function statusLabel(status: RemoteConnection['status']): string {
   border: 0;
   font: inherit;
   text-align: left;
+}
+
+.settings-connections-panel__identity:focus-visible strong {
+  text-decoration: underline;
 }
 
 .settings-connections-panel__attention {

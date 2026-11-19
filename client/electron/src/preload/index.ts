@@ -1,6 +1,6 @@
 import type { AgentRequestResponse } from '@workspace/core/agent-request';
 import { contextBridge, ipcRenderer } from 'electron';
-import type { HarnessProvider, AddSshConnectionInput, AgentGitBranchInput, AgentGitCommitInput, AgentGitMergeInput, AgentGitMessageGenerationInput, AgentGitPullRequestInput, AgentGitPushInput, AgentGitStageInput, AgentGitUpdateFromBaseInput, AppCommand, ApprovalPreset, ProviderConversationRef, BrowserBounds, AppApi, ConversationListInput, ConversationResumeTarget, CreateAgentInput, CreateAutomationInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DevicePairingSession, DesktopUpdateStatus, DuplicateAgentOptions, GlobalWorkItemQuery, AutomationLocation, MainToRendererEvent, MoveAgentToTeamInput, OpenInApplication, RendererSendPromptOptions, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, SetCodexResourceSharingInput, SourceFolderListInput, SpokenAnnouncementVoice, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkItem, WorkItemQuery, WorkProviderKind } from '@workspace/core/contracts';
+import type { HarnessProvider, AddSshConnectionInput, AgentGitBranchInput, AgentGitCommitInput, AgentGitMergeInput, AgentGitMessageGenerationInput, AgentGitPullRequestInput, AgentGitPushInput, AgentGitStageInput, AgentGitUpdateFromBaseInput, AppCommand, ApprovalPreset, ProviderConversationRef, BrowserBounds, AppApi, ConversationListInput, ConversationResumeTarget, CreateAgentInput, CreateAutomationInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DesktopUpdateStatus, DuplicateAgentOptions, GlobalWorkItemQuery, AutomationLocation, MainToRendererEvent, MoveAgentToTeamInput, OpenInApplication, RendererSendPromptOptions, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, SetCodexResourceSharingInput, SourceFolderListInput, SpokenAnnouncementVoice, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkItem, WorkItemQuery, WorkProviderKind } from '@workspace/core/contracts';
 import { ipcChannels, type AppIpcEvents, type AppIpcRequests } from '@workspace/core/ipc';
 import { exposeNativeRendererApi, TypedIpcRenderer } from '@korus-dev/agent-ui-sdk/electron/preload';
 
@@ -39,13 +39,6 @@ const api: AppApi = {
   guestConversationContent: (id, input) => ipc.invoke(ipcChannels.guestConversationContent, id, input),
   conversationShareControl: (input) => ipc.invoke(ipcChannels.conversationShareControl, input),
   companionControl: (input) => ipc.invoke(ipcChannels.companionControl, input),
-  getRemoteControlStatus: () => ipc.invoke(ipcChannels.getRemoteControlStatus),
-  enableRemoteControl: () => ipc.invoke(ipcChannels.enableRemoteControl),
-  disableRemoteControl: () => ipc.invoke(ipcChannels.disableRemoteControl),
-  startDevicePairing: () => ipc.invoke(ipcChannels.startDevicePairing),
-  checkDevicePairing: (session: DevicePairingSession) => ipc.invoke(ipcChannels.checkDevicePairing, session),
-  listPairedDevices: (environmentId: string) => ipc.invoke(ipcChannels.listPairedDevices, environmentId),
-  revokePairedDevice: (environmentId: string, clientId: string) => ipc.invoke(ipcChannels.revokePairedDevice, environmentId, clientId),
   connectWorkProvider: (provider, options) => options ? ipc.invoke(ipcChannels.connectWorkProvider, provider, options) : ipc.invoke(ipcChannels.connectWorkProvider, provider),
   respondToPlanReview: (agentId, response) => ipc.invoke(ipcChannels.respondToPlanReview, agentId, response),
   pollWorkProviderAuthorization: (provider: WorkProviderKind) => ipc.invoke(ipcChannels.pollWorkProviderAuthorization, provider),

@@ -18,9 +18,16 @@ export function addCost(
   execution = false,
 ): void {
   let reason: UsageCostReason | undefined;
-  if (execution && price && "usd" in price) {
-    cost.pricedExecutions = (cost.pricedExecutions ?? 0) + 1;
+  if (!execution && price !== null) cost.requests++;
+  if (price && "usd" in price) {
+    if (execution) cost.pricedExecutions = (cost.pricedExecutions ?? 0) + 1;
+    else cost.pricedRequests++;
     cost.usd = Number(((cost.usd ?? 0) + price.usd).toPrecision(15));
+    const regions = cost.pricingRegions ??= [];
+    if (!regions.includes(price.region)) {
+      regions.push(price.region);
+      regions.sort((a, b) => (a ?? "").localeCompare(b ?? ""));
+    }
   } else if (price === null || execution) {
     cost.unknownRequestExecutions++;
     reason =
@@ -28,14 +35,8 @@ export function addCost(
         ? price.reason
         : (unknownReason ?? "unknown-request-coverage");
   } else {
-    cost.requests++;
-    if ("usd" in price) {
-      cost.pricedRequests++;
-      cost.usd = Number(((cost.usd ?? 0) + price.usd).toPrecision(15));
-    } else {
-      cost.unpricedRequests++;
-      reason = price.reason;
-    }
+    cost.unpricedRequests++;
+    reason = price.reason;
   }
   if (reason) {
     const existing = cost.reasons.find((r) => r.reason === reason);

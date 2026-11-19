@@ -5310,6 +5310,7 @@
         "source": {
           "path": "providers/openai/models/gpt-6.2-sol.toml",
           "urls": [
+            "https://community.openai.com/t/gpt-6-2-astra-and-sol-are-now-available/1417531/1",
             "https://developers.openai.com/api/docs/guides/function-calling",
             "https://developers.openai.com/api/docs/guides/latest-model",
             "https://developers.openai.com/api/docs/guides/latest-model;",
@@ -5323,13 +5324,14 @@
             "https://developers.openai.com/api/docs/pricing",
             "https://developers.openai.com/api/docs/pricing#built-in-tools",
             "https://developers.openai.com/api/docs/pricing?latest-pricing=ultrafast",
-            "https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create;"
+            "https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create;",
+            "https://openai.com/index/introducing-gpt-6-2-astra-sol/"
           ]
         }
       },
       "cost": [
         {
-          "date": "2026-11-18T14:10:51.655Z",
+          "date": "2026-11-17T18:00:37.118Z",
           "availability": "priced",
           "rates": {
             "text": {

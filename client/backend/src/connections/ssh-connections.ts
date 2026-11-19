@@ -8,11 +8,12 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import type { HarnessProvider, AddSshConnectionInput, ClaudeAuthentication, RemoteConnection, SshHostCandidate } from '@workspace/core/contracts';
 import { createEntityId } from '@workspace/core/ids';
+import { providerDisplayName } from '@workspace/core/provider-driver';
 import { backendProviderTokensFilePath } from '../state';
 import { remoteCodexVersionCommand } from './remote-codex-command';
 import { remoteClaudeAuthenticationCommand, remoteClaudeInstallCommand, remoteClaudeVersionCommand } from './remote-claude-install';
-import { exclusiveHomeEnvironment } from '../home-lock';
 import { remoteEngineLinkCommand } from './remote-engine-links';
+import { remoteShellEngineInstallCommand, type RemoteShellEngine } from './remote-engines';
 import { remoteEnvironmentCommand, remoteNodeInstallCommand } from './remote-node';
 
 type ExecResult = {
@@ -86,6 +87,11 @@ export class SshConnectionService {
         await progress('Installing Claude Code…');
         claudeVersion = await this.ensureRemoteClaudeInstalled(next.host);
       }
+      for (const provider of new Set(providers)) {
+        if (provider === 'codex' || provider === 'claude') continue;
+        await progress(`Installing ${providerDisplayName(provider)}…`);
+        await this.ensureRemoteShellEngineInstalled(next.host, provider);
+      }
       await progress('Verifying the remote environment…');
       await this.linkRemoteEngines(next.host);
       const runtimeVersions = [`${product.daemonName} ${daemonVersion}`, ...(codexVersion ? [`Codex ${codexVersion}`] : []), ...(claudeVersion ? [`Claude ${claudeVersion}`] : [])];
@@ -157,6 +163,13 @@ export class SshConnectionService {
     return version;
   }
 
+  async ensureRemoteShellEngineInstalled(host: string, provider: RemoteShellEngine): Promise<void> {
+    await this.run('ssh', [
+      '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', host,
+      remoteEnvironmentCommand(remoteShellEngineInstallCommand(provider)),
+    ], { timeoutMs: 360_000 });
+  }
+
   async getRemoteClaudeAuthentication(host: string): Promise<ClaudeAuthentication> {
     try {
       const result = await this.run('ssh', [
@@ -223,8 +236,18 @@ export class SshConnectionService {
       '-o',
       'ConnectTimeout=10',
       host,
-      remoteEnvironmentCommand(`set -eu\nversion=$(node ${stagedDaemon} --version)\n[ "$version" = "${product.daemonName} ${backendPackage.version}" ] || { echo "Remote Korus verification failed; previous installation kept." >&2; exit 1; }\ntest -s ${stagedReference}\nchmod 600 ${stagedDaemon} ${stagedReference}\nmv ${stagedReference} ~/${product.homeDirectory}/viz/reference.png\nmv ${stagedDaemon} ${remoteDaemonPath}`),
-    ]);
+      remoteEnvironmentCommand(`set -eu
+trap 'rm -f ${stagedDaemon} ${stagedReference}' EXIT
+version=$(node ${stagedDaemon} --version)
+[ "$version" = "${product.daemonName} ${backendPackage.version}" ] || { echo "Remote Korus verification failed; previous installation kept." >&2; exit 1; }
+test -s ${stagedReference}
+chmod 600 ${stagedDaemon} ${stagedReference}
+if ! cmp -s ${stagedDaemon} ${remoteDaemonPath}; then
+  node ${stagedDaemon} install-ssh-service ${remoteDaemonPath}
+fi
+mv ${stagedReference} ~/${product.homeDirectory}/viz/reference.png
+`),
+    ], { timeoutMs: 45_000 });
   }
 
   private async syncRemoteProviderTokens(host: string): Promise<void> {
@@ -344,7 +367,7 @@ export function sshStdioTransport(host: string): RemoteConnection['transport'] {
       '-T', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3',
       '-o', 'StrictHostKeyChecking=accept-new',
       host,
-      remoteEnvironmentCommand(`node ${remoteDaemonPath} connect || { code=$?; [ "$code" -eq 1 ] || exit "$code"; exec env ${exclusiveHomeEnvironment}=1 node ${remoteDaemonPath} --stdio; }`),
+      remoteEnvironmentCommand(`exec node ${remoteDaemonPath} connect --start`),
     ],
   };
 }

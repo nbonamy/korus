@@ -81,12 +81,12 @@ it('reprices saved usage through the released usage/get contract, then keeps pri
     reportedMode: null, cacheMode: 'implicit', modality: 'text', pricingContext: { context: 1000, region: null },
     tokens: { input: 1000000, output: 0, cacheRead: 0, cacheWrite: {}, reasoning: 0, inputIncludesCacheRead: true, inputIncludesCacheWrite: true, outputIncludesReasoning: true } });
   expect(acceptedRequest).toBe(true);
-  // Request and cost decoding expectations match the shipped client; no new fields or negotiation.
+  // A shipped usage/get request receives its usual cost counters plus optional Analytics details.
   const cost = async () => {
     const response = await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'usage/get', params: {} });
     return (response as { result: { cost: unknown } }).result.cost;
   };
-  const expected = (usd: number) => ({ usd, coverage: 'complete', requests: 1, pricedRequests: 1, unpricedRequests: 0, unknownRequestExecutions: 0, reasons: [] });
+  const expected = (usd: number) => ({ usd, coverage: 'complete', requests: 1, pricedRequests: 1, unpricedRequests: 0, unknownRequestExecutions: 0, reasons: [], pricingRegions: [null] });
   const preview = () => usage.previewTelemetry({
     installId: 'd8b65ff5-179c-49b9-ac3a-f60a54a0f43f', day: '2026-11-02',
   }, '1.2.3', 'linux');

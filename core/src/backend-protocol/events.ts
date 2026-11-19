@@ -162,7 +162,6 @@ function expectEventContext(event: EventRecord): void {
       return;
     case 'snapshot.updated':
     case 'provider.authenticationChanged':
-    case 'remoteControl.statusChanged':
     case 'browser.annotationCreated':
     case 'mission.implementationStartProgress':
     case 'mission.focusRequested':

@@ -20,7 +20,7 @@ import { handoffInProgress } from '@workspace/core/agent-handoff';
 import { isAgentRequestResponse } from '@workspace/core/agent-request';
 import type { AgentProviderDriver, BackendEvent, ProviderSendResult } from '@workspace/core/provider-driver';
 import { resolveProviderCoordinationPolicy, unsupportedProviderFeature, utilityTaskComplexities, type UtilityTaskComplexity } from '@workspace/core/provider-driver';
-import type { Agent, HarnessProvider, AppGeneralSettings, AppPluginSettings, ProviderSessionData, ConversationListInput, ConversationResumeTarget, CreateSourceWorktreeInput, DevicePairingSession, SendPromptOptions } from '@workspace/core/contracts';
+import type { Agent, HarnessProvider, AppGeneralSettings, AppPluginSettings, ProviderSessionData, ConversationListInput, ConversationResumeTarget, CreateSourceWorktreeInput, SendPromptOptions } from '@workspace/core/contracts';
 import { stat } from 'node:fs/promises';
 import { listAgentFolderFiles, previewAgentFolderFile, readAgentFolderFileChunk } from './agent-files';
 import { listAgentDirectory } from './agent-directory';
@@ -207,30 +207,6 @@ export class ProviderDriverRpc {
       case backendMethods.workspaceDirectoryList: {
         const record = requireRecord(params);
         return listAgentDirectory(requireString(record.folder, 'folder'), record.input === undefined ? {} : requireRecord(record.input));
-      }
-      case backendMethods.remoteControlStatusGet:
-        return this.remoteControlOperation(params, 'getRemoteControlStatus')();
-      case backendMethods.remoteControlEnable:
-        return this.remoteControlOperation(params, 'enableRemoteControl')();
-      case backendMethods.remoteControlDisable:
-        return this.remoteControlOperation(params, 'disableRemoteControl')();
-      case backendMethods.remoteControlPairingStart:
-        return this.remoteControlOperation(params, 'startDevicePairing')();
-      case backendMethods.remoteControlPairingCheck: {
-        const record = requireRecord(params);
-        return this.remoteControlOperation(params, 'checkDevicePairing')(record.session as DevicePairingSession);
-      }
-      case backendMethods.remoteControlClientsList: {
-        const record = requireRecord(params);
-        return this.remoteControlOperation(params, 'listPairedDevices')(requireString(record.environmentId, 'environmentId'));
-      }
-      case backendMethods.remoteControlClientRevoke: {
-        const record = requireRecord(params);
-        await this.remoteControlOperation(params, 'revokePairedDevice')(
-          requireString(record.environmentId, 'environmentId'),
-          requireString(record.clientId, 'clientId'),
-        );
-        return null;
       }
       case backendMethods.workspaceFilePreview: {
         const record = requireRecord(params);
@@ -651,7 +627,7 @@ export class ProviderDriverRpc {
       }
       case backendMethods.sourceWorktreeCreate: {
         const record = requireRecord(params);
-        return (await this.worktreeManager.create(record.input as CreateSourceWorktreeInput, { backgroundInitialization: true })).worktree;
+        return (await this.worktreeManager.create(record.input as CreateSourceWorktreeInput)).worktree;
       }
       default:
         return undefined;
@@ -661,15 +637,6 @@ export class ProviderDriverRpc {
   /** The harness whose account banks rate-limit resets. */
   private bankedResetsProvider(): HarnessProvider {
     return harnessProviders.find(provider => defaultProviderCapabilities(provider).bankedResets) ?? defaultHarnessProvider;
-  }
-  private remoteControlOperation<Key extends 'getRemoteControlStatus' | 'enableRemoteControl' | 'disableRemoteControl' | 'startDevicePairing' | 'checkDevicePairing' | 'listPairedDevices' | 'revokePairedDevice'>(
-    params: unknown, key: Key,
-  ): NonNullable<AgentProviderDriver[Key]> {
-    const provider = params === undefined ? defaultHarnessProvider : requireProvider(requireRecord(params).provider ?? defaultHarnessProvider);
-    const driver = this.requireDriver(provider);
-    const operation = driver[key];
-    if (!operation) throw new Error(`${provider} does not support remote control (${key}).`);
-    return operation.bind(driver) as NonNullable<AgentProviderDriver[Key]>;
   }
 
   async close(): Promise<void> {

@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import extractZip from 'extract-zip';
 import release from '../node-runtime-release.json' with { type: 'json' };
 
 export function nodeRuntimeTarget(platform, arch, config = release) {
@@ -60,13 +61,6 @@ export async function prepareNodeRuntime({ platform, arch, outputDir, cacheDir, 
 function digest(bytes) { return createHash('sha256').update(bytes).digest('hex'); }
 
 function extractArchive(archivePath, outputDir, target) {
-  if (target.platform !== 'win32') {
-    execFileSync('tar', ['-xzf', archivePath, '-C', outputDir, `${target.directory}/bin/node`, `${target.directory}/LICENSE`]);
-  } else if (process.platform === 'win32') {
-    const quote = (value) => `'${value.replaceAll("'", "''")}'`;
-    execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-      `$ErrorActionPreference = 'Stop'; Expand-Archive -LiteralPath ${quote(archivePath)} -DestinationPath ${quote(outputDir)}`]);
-  } else {
-    execFileSync('unzip', ['-q', archivePath, `${target.directory}/node.exe`, `${target.directory}/LICENSE`, '-d', outputDir]);
-  }
+  if (target.platform === 'win32') return extractZip(archivePath, { dir: outputDir });
+  execFileSync('tar', ['-xzf', archivePath, '-C', outputDir, `${target.directory}/bin/node`, `${target.directory}/LICENSE`]);
 }

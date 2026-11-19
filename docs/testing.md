@@ -53,6 +53,12 @@ the browser explicitly for those workspaces only; a system browser or an existin
 cache is not a prerequisite. `test:scripts` is for the tooling
 scripts themselves (signing, packaging, publishing, CI gating), not for product UI.
 
+Use Chromium for layout, paint, native input and browser I/O that jsdom cannot
+exercise. Use component or logic tests for the state transitions behind those
+interactions. When cases share a browser fixture, start Vite and Chromium once
+per spec with `startAnnotationFixture` and open a fresh context for every case so
+storage, routes, clocks and media settings remain isolated.
+
 The console E2E test at `server/frontend/src/__tests__/console-e2e.spec.mjs`
 (fixtures stay in `server/test/e2e/fixtures`) builds `server/frontend/src` with operator-secret canaries
 and runs a real browser through the authenticated console proxy and aggregate
