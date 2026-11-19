@@ -15,6 +15,8 @@ All notable Korus changes are recorded here.
 - **Worktree setup:** Open the agent as soon as Git finishes checkout and follow background setup in the conversation.
 - **Settings navigation:** Scroll the sidebar independently and use the Up and Down arrows to switch sections.
 - **Code reviews:** Removed the extra background behind the selected review round.
+- **Analytics pricing:** Estimates cover GPT-6.2 Sol usage from launch. Analytics shows reported pricing regions and uses base rates when the region is unknown.
+- **Analytics charts:** Hover dots match their series colors in dark mode.
 
 ## [0.58.5] - 2026-11-18
 
