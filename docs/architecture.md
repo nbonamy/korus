@@ -581,7 +581,19 @@ Agents never move between backend locations.
   retried without removing unrelated teams. Deleting a connection drops the links
   and leaves the remote running.
 - Sidebar sections are keyed by the repository's origin identity, falling back to
-  the path on the agent's own host. Missions and sharing stay on the local host.
+  the path on the agent's own host. Sharing stays on the local host.
+- A Mission has one execution host. That daemon owns the lead, workers, runs,
+  artifacts and worktrees. The controller links the host's workspace, projects
+  its Missions alongside agents, and sends Mission actions to their owner.
+  Linked Mission metadata is cached with the roster. The saved connection and
+  a fresh snapshot reattach the controller to work done while disconnected.
+  Startup rechecks previously installed linked SSH hosts marked unavailable.
+- A hosted Mission captures the workspace's repo catalog at creation. Tickets
+  reference catalog keys even when the selected host has no checkout. At dispatch
+  the owning daemon matches Git origins, acquires a missing clone using its own
+  access, and persists the Mission worktree before launching the worker. Parallel
+  workers for one repo share that Mission worktree. A failed checkout blocks its
+  assignment and leaves other repos eligible for dispatch.
 - The controlling daemon owns collaboration and durable tasks for a mixed-host
   team. Hidden remote teams retain their controller identity; roster, messaging,
   delegation and task tools call that controller over the existing SSH channel.

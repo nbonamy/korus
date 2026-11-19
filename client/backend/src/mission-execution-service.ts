@@ -1,4 +1,4 @@
-import type { MissionDispatchInput } from '@workspace/core/mission-types';
+import type { MissionDispatchInput, MissionRepository } from '@workspace/core/mission-types';
 import { applyExecutionSelection } from '@workspace/core/execution-selection';
 import type { ExecutionSelection } from '@workspace/core/contracts/execution';
 import type { Agent, AppSnapshot, ProviderModelOption, CreateSourceWorktreeInput, SourceWorktree } from '@workspace/core/contracts';
@@ -13,7 +13,7 @@ import { missionLeadAgentId } from '@workspace/core/mission-attention';
 import { missionImplementationBusy, missionImplementationUsesLead, missionRunAssignment, missionRunTicketIndex, pendingMissionRun, type MissionArtifactReadResult, type MissionArtifactWriteInput, type MissionExecutionInput, type MissionImplementationStartProgress, type MissionResultInput, type MissionReviewFindingInput, type MissionReviewFindingUpdateInput, type MissionRun, type MissionTicketDraftInput, type MissionTicketDraftResult, type MissionToolContext } from '@workspace/core/mission-execution';
 import type { MissionService } from './mission-service';
 import { MissionAgentTools, missionFindingFixPrompt, missionTicketsMarkdown } from './mission-agent-tools';
-import { missionAgent, missionTeamRepositories, sameSkills, stageKickoffPrompt, missionRecoveryPrompt } from './mission-execution-policy';
+import { missionAgent, missionTeamRepositories, missionWorkspaceName, sameSkills, stageKickoffPrompt, missionRecoveryPrompt } from './mission-execution-policy';
 import { MissionWorkspaceService } from './mission-workspace-service';
 
 export type MissionExecutionPorts = {
@@ -28,6 +28,7 @@ export type MissionExecutionPorts = {
   validateRepository(path: string): Promise<void>;
   createWorktree(input: CreateSourceWorktreeInput): Promise<SourceWorktree>;
   getHead(path: string): Promise<string>;
+  resolveRepository?(repo: MissionRepository): Promise<string>;
   ensureStageSkills(missionId: string, stage: MissionStage): Promise<MissionRun['skills']>;
   refreshWorkspace(agentId: string): Promise<void>;
   refreshConversationContext(agent: Agent): Promise<void>;
@@ -140,7 +141,7 @@ export class MissionExecutionService {
       if (typeof input.repoPath !== 'string' || !input.repoPath.trim()) throw new Error('Choose a repository.');
       const repoPath = input.repoPath.trim();
       if (!missionTeamRepositories(this.ports.snapshot, mission).includes(repoPath)) throw new Error('Choose a repository represented in this mission workspace.');
-      await this.ports.validateRepository(repoPath);
+      if (!mission.execution?.repositoryCatalog) await this.ports.validateRepository(repoPath);
       await this.change(input, current => {
         if (current.execution?.workspace) throw new Error('The mission repository is locked after its worktree is created.');
         current.execution!.repoPath = repoPath;
@@ -424,7 +425,13 @@ export class MissionExecutionService {
             if (previousPlan) current.execution!.dispatchPlan = { ...previousPlan, commandId: `approval-${run.id}`,
               expectedRevision: previousPlan.revision, revision: previousPlan.revision + 1, assignments: [] };
             this.requireAvailableMembers(current);
-            await this.workspaces.provisionImplementationWorkspaces(current, reportImplementationStartProgress);
+            const catalog = current.execution!.repositoryCatalog;
+            if (catalog) {
+              if (current.artifacts.tickets.some(ticket => !catalog.some(repo => repo.key === ticket.repositoryPath))) {
+                throw new Error('Every ticket must target a repository in the Mission catalog.');
+              }
+              current.execution!.workspaceName ??= missionWorkspaceName(current);
+            } else await this.workspaces.provisionImplementationWorkspaces(current, reportImplementationStartProgress);
             reportImplementationStartProgress('startingAgents');
           }
           if (current.stage === 'ship') this.workspaces.prepareDeliveries(current, missionImplementationUsesLead(current) ? await this.ports.ensureMissionHome(current.id) : undefined);
@@ -1000,6 +1007,9 @@ export class MissionExecutionService {
 
   async waitForLaunches(): Promise<void> { await Promise.all(this.launches.values()); }
 
+  /** Lets Mission deletion see every worktree prepared by in-flight launches. */
+  settleWorkerWorkspaces(missionId: string): Promise<void> { return this.workspaces.settleWorkerWorkspaces(missionId); }
+
   private async launch(id: string, runId: string): Promise<void> {
     const mission = this.requireMission(id);
     const run = mission.execution!.runs.find(run => run.id === runId)!;
@@ -1017,9 +1027,17 @@ export class MissionExecutionService {
     const missionHome = await this.ports.ensureMissionHome(mission.id);
     if (!await canLaunch()) return;
     const repositoryPath = run.repositoryPath ?? mission.artifacts.tickets[run.ticketIndex ?? -1]?.repositoryPath;
-    const workspace = repositoryPath
+    let workspace = repositoryPath
       ? mission.execution!.workspaces?.find(candidate => candidate.repositoryPath === repositoryPath)
       : mission.execution!.workspaces?.[0] ?? mission.execution!.workspace;
+    if (run.stage === 'implementation' && repositoryPath && mission.execution!.repositoryCatalog && (!workspace || workspace.deleted)) {
+      try {
+        workspace = await this.workspaces.provisionWorkerWorkspace(mission, repositoryPath, record => this.ports.missions.changeAsync(id, record));
+      } catch (error) {
+        throw new Error(`Could not prepare ${repositoryPath}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      if (!await canLaunch()) return;
+    }
     const workingFolder = workspace?.path ?? missionHome;
     let worker = this.agent(run.workerId);
     const reusedWorker = !!worker;
@@ -1044,6 +1062,7 @@ export class MissionExecutionService {
       applyExecutionSelection(worker, implementationModel);
     }
     if (worker.id === missionLeadAgentId(mission) && missionImplementationUsesLead(mission)) worker.folder = workingFolder;
+    if (mission.execution?.repositoryCatalog && !worker.folder) worker.folder = workingFolder;
     await this.ports.refreshWorkspace(worker.id);
     if (!await canLaunch()) return;
     await this.ports.missions.change(id, current => {
@@ -1197,7 +1216,8 @@ export class MissionExecutionService {
         if (accepted && (accepted.revision ?? 0) === (ticket.revision ?? 0)) ticket.done = accepted.done;
       }
     }
-    execution.runs.push({ id: runId, stage: mission.stage, memberId, ...(draftTickets ? { draftTickets, draftTicketsBaseHash } : {}), ...(previousOrchestratorRun?.workerId ? { workerId: previousOrchestratorRun.workerId } : {}), status: 'preparing', skills: [], feedback: input.feedback?.trim() ?? '', startedAt: new Date().toISOString() });
+    const workerId = previousOrchestratorRun?.workerId ?? (execution.repositoryCatalog && mission.stage === 'requirements' ? memberId : undefined);
+    execution.runs.push({ id: runId, stage: mission.stage, memberId, ...(draftTickets ? { draftTickets, draftTicketsBaseHash } : {}), ...(workerId ? { workerId } : {}), status: 'preparing', skills: [], feedback: input.feedback?.trim() ?? '', startedAt: new Date().toISOString() });
     return runId;
   }
 

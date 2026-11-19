@@ -141,19 +141,43 @@ describe('MissionWorkspace', () => {
     const replacement = agents[1]!;
     const executeMission = vi.fn().mockResolvedValue(undefined);
     const wrapper = mountWorkspace(mission, { attachTo: document.body, agents: [...agents, { ...replacement, id: 'remote', remoteConnectionId: 'host' }, { ...replacement, id: 'outside', teamId: 'other' }], executeMission });
-    expect(wrapper.text()).toContain('A Mission member is unavailable');
-    const select = wrapper.get('select[aria-label="Replacement member"]');
+    expect(wrapper.text()).toContain('An agent assigned to this mission is no longer available');
+    const select = wrapper.get('select[aria-label="Choose an agent"]');
     expect(select.findAll('option').map(option => option.attributes('value'))).not.toContain('remote');
     expect(select.findAll('option').map(option => option.attributes('value'))).not.toContain('outside');
     await select.setValue(replacement.id);
-    await wrapper.get('[data-testid="reassign-mission-member"]').trigger('click');
+    const useAgent = wrapper.get('[data-testid="reassign-mission-member"]');
+    expect(useAgent.text()).toBe('Use this agent');
+    await useAgent.trigger('click');
     await flushPromises();
     expect(executeMission).toHaveBeenCalledExactlyOnceWith({ id: mission.id, revision: mission.revision, action: 'configure', teamId: mission.teamId, memberIds: [replacement.id] });
     const repaired = structuredClone(mission);
     repaired.execution!.memberIds = [replacement.id];
     await wrapper.setProps({ mission: repaired });
-    expect(wrapper.find('select[aria-label="Replacement member"]').exists()).toBe(false);
+    expect(wrapper.find('select[aria-label="Choose an agent"]').exists()).toBe(false);
     wrapper.unmount();
+  });
+
+  it('defers remote member recovery while a run is active', async () => {
+    const mission = missionWithRun('running');
+    mission.remoteConnectionId = 'devbox';
+    const [lead, replacement] = createInitialSnapshot().agents.map(agent => ({ ...agent, remoteConnectionId: 'devbox' }));
+    mission.execution!.memberIds = [lead!.id];
+    const wrapper = mountWorkspace(mission, { agents: [replacement!] });
+    const recovery = () => wrapper.find('select[aria-label="Choose an agent"]');
+    expect(recovery().exists()).toBe(false);
+
+    mission.execution!.runs[0]!.status = 'failed';
+    await wrapper.setProps({ mission });
+    expect(recovery().exists()).toBe(true);
+    expect(recovery().findAll('option').map(option => option.element.value)).toContain(replacement!.id);
+
+    await wrapper.setProps({ agents: [] });
+    expect(recovery().exists()).toBe(false);
+    expect(wrapper.text()).toContain('Add an agent to this workspace on the machine running the mission.');
+
+    await wrapper.setProps({ agents: [lead!, replacement!] });
+    expect(recovery().exists()).toBe(false);
   });
 
   it('expands either pane and restores the split without remounting content or losing its width', async () => {

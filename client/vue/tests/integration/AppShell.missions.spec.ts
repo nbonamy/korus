@@ -25,6 +25,64 @@ function representGitHubRepository(agent: ReturnType<typeof createInitialSnapsho
 }
 
 describe('AppShell missions', () => {
+  it('opens the Mission layout with separate environment and issue controls in the chat pane', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.remoteConnections.connections = [{
+      id: 'devbox', kind: 'ssh', host: 'devbox', name: 'Devbox', status: 'ready', createdAt: '', updatedAt: '',
+      providerConnections: [{ provider: 'claude', installed: true, connected: true, checking: false }],
+    }];
+    const create = vi.fn(async () => {
+      const mission = createMission(snapshot, { outcome: 'Remote mission', workflowType: 'shapeAndShipFeature',
+        teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
+      mission.remoteConnectionId = 'devbox';
+      mission.execution!.runs.push({
+        id: 'draft-lead-run', stage: 'requirements', memberId: 'remote-lead',
+        status: 'preparing', skills: [], feedback: '', startedAt: '2026-09-19T00:00:00.000Z',
+      });
+      return mission;
+    });
+    const send = vi.fn().mockResolvedValue(undefined);
+    const updateAgent = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mountShell({ snapshot, createMission: create, realConversationPane: true, sendPromptAction: send, updateAgent });
+    try {
+      wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('create-mission');
+      await flushPromises();
+      const workspace = wrapper.get('.mission-workspace');
+      const workbench = workspace.get('.mission-workspace__workbench');
+      expect(workbench.isVisible()).toBe(true);
+      expect(workbench.get('[aria-current="step"]').text()).toContain('Requirements');
+      const rail = workspace.get('.mission-conversation-rail');
+      const welcome = rail.get('.conversation-pane__empty');
+      const environment = welcome.get('button[aria-label="Environment"]');
+      expect(environment.text()).toContain('This computer');
+      expect(welcome.findAll('button').some(button => button.text() === 'Choose an issue…')).toBe(true);
+      expect(wrapper.find('.app-form-dialog-shell').exists()).toBe(false);
+      await environment.trigger('click');
+      const option = wrapper.findAll('[role="menuitemradio"]').find(item => item.text() === 'Devbox');
+      await option!.trigger('click');
+      expect(environment.text()).toContain('Devbox');
+      expect(create).not.toHaveBeenCalled();
+      const editor = rail.get<HTMLElement>('.chat-rich-text-editor');
+      editor.element.textContent = 'Build billing';
+      await editor.trigger('input');
+      await editor.trigger('keydown', { key: 'Enter' });
+      await flushPromises();
+      expect(create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ teamId: snapshot.teams[0]!.id, remoteConnectionId: 'devbox' }));
+      expect(send).not.toHaveBeenCalled();
+
+      const mission = snapshot.missions![0]!;
+      const lead = { ...snapshot.agents[0]!, id: 'remote-lead', remoteConnectionId: 'devbox' };
+      snapshot.agents.push(lead);
+      mission.execution!.memberIds = [lead.id];
+      Object.assign(mission.execution!.runs[0]!, { workerId: lead.id, status: 'running' });
+      await wrapper.setProps({ snapshot: { ...snapshot } });
+      await flushPromises();
+      expect(updateAgent).toHaveBeenCalledExactlyOnceWith({ id: lead.id, selection: expect.objectContaining({ provider: 'claude' }) });
+      expect(send).toHaveBeenCalledExactlyOnceWith('Build billing', undefined);
+      expect(wrapper.find('.mission-workspace').exists()).toBe(true);
+    } finally { wrapper.unmount(); }
+  });
+
   it('opens a mission in its own window from the sidebar menu', async () => {
     const snapshot = createInitialSnapshot();
     const mission = createMission(snapshot, { outcome: 'Ship billing', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });

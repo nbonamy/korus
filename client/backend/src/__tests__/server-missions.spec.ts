@@ -10,6 +10,11 @@ import { AgentGitService } from '../git/agent-git-service';
 import { applyMissionDebugFixture } from '../mission-debug-fixtures';
 import { applyMissionScreenshotFixture } from '../mission-screenshot-fixture';
 import { missionCreatedWorkspaces } from '@workspace/core/mission-execution';
+import { readyRemoteConnection } from './server-test-fixtures';
+import { CompanionGateway, type GatewayPort } from '../companion/gateway';
+import { companionWorkspaceOf } from '@workspace/core/companion-projection';
+import { EventEmitter } from 'node:events';
+import { pathToFileURL } from 'node:url';
 
 /** A Codex driver that accepts every prompt as `session` (reporting `turnId` when given). */
 function acceptingDriver(session: unknown, turnId?: string) {
@@ -19,6 +24,146 @@ function acceptingDriver(session: unknown, turnId?: string) {
 }
 
 describe('mission backend boundary', () => {
+  it('dispatches on the remote daemon with the controller offline and projects the worker on reconnect', async () => {
+    const git = promisify(execFile);
+    const root = await mkdtemp(join(tmpdir(), 'remote-mission-'));
+    const origin = join(root, 'origin'), source = join(root, 'devbox'), home = join(root, 'mission');
+    let controller: AppBackendServer | undefined, host: AppBackendServer | undefined;
+    try {
+      await git('git', ['init', '-b', 'main', origin]);
+      await git('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '--allow-empty', '-m', 'initial'], { cwd: origin });
+      await mkdir(source);
+      await mkdir(home);
+      vi.stubEnv('GIT_CONFIG_COUNT', '1');
+      vi.stubEnv('GIT_CONFIG_KEY_0', `url.${pathToFileURL(origin).href}.insteadOf`);
+      vi.stubEnv('GIT_CONFIG_VALUE_0', 'https://git.example.invalid/team/assigned.git');
+      vi.stubEnv('GIT_ALLOW_PROTOCOL', 'file');
+
+      const local = createInitialSnapshot(), remote = createInitialSnapshot();
+      remote.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
+      remote.sourceFolder = { ...remote.sourceFolder, initialized: true, path: source };
+      const member = local.agents[0]!;
+      const repositories: [typeof member, string][] = [[member, 'assigned'], [{ ...member, id: 'agent-unused' }, 'unused']];
+      for (const [agent, repo] of repositories) {
+        const folder = `/laptop/${repo}`;
+        agent.folder = folder;
+        agent.workspace = { kind: 'git', folder, repositoryName: repo, repositoryRoot: folder, primaryWorktreeRoot: folder,
+          branch: 'main', isLinkedWorktree: false, originUrl: `https://git.example.invalid/team/${repo}.git`, updatedAt: '' };
+        if (agent !== member) { local.agents.push(agent); local.teams[0]!.agentIds.push(agent.id); }
+      }
+      const connection = { ...readyRemoteConnection(), daemonVersion: 'test', installedAt: new Date().toISOString() };
+      local.remoteConnections.connections = [connection];
+      const { driver, sentPrompts } = acceptingDriver({ kind: 'codex', conversationId: 'remote-mission-thread' });
+      host = new AppBackendServer({ version: 'test', snapshot: remote, ensureMissionHome: async () => home, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])) });
+      async function call(server: AppBackendServer, method: string, params?: unknown) {
+        const reply = await server.handleMessage({ jsonrpc: '2.0', id: 1, method, params });
+        if (!reply || 'error' in reply) throw new Error(reply && 'error' in reply ? reply.error.message : 'Missing reply');
+        return reply.result;
+      }
+      let disk = persistedStateFromSnapshot(local), online = true;
+      let hostInspection = Promise.resolve({ ...connection }), answerInspection = () => {};
+      const events = new EventEmitter();
+      const connectController = (snapshot: AppSnapshot) => new AppBackendServer({
+        version: 'test', snapshot, saveSnapshot: async candidate => { disk = persistedStateFromSnapshot(candidate); },
+        onEvent: event => events.emit('event', event),
+        sshConnections: { inspectVersions: () => hostInspection } as never,
+        remoteClients: {
+          request: async (_connection: unknown, method: string, params: unknown) => {
+            if (!online) throw new Error('Controller offline');
+            return structuredClone(await call(host!, method, params));
+          },
+          close: async () => {},
+        } as never,
+      });
+      controller = connectController(local);
+      const created = await call(controller, backendMethods.missionCreate, { input: {
+        outcome: 'Remote planning', workflowType: 'shapeAndShipFeature', teamId: member.teamId,
+        orchestratorMemberId: member.id, remoteConnectionId: 'connection-devbox',
+      } }) as AppSnapshot;
+      const mission = created.missions![0]!;
+      expect(mission).toMatchObject({ teamId: member.teamId, remoteConnectionId: 'connection-devbox' });
+      expect(local.missions ?? []).toHaveLength(0);
+      const current = () => remote.missions!.find(candidate => candidate.id === mission.id)!;
+      await vi.waitFor(() => expect(current().execution!.runs.at(-1)?.status).toBe('running'));
+      const lead = current().execution!.runs[0]!.workerId!;
+      expect(host.missionDeveloperInstructions(lead)).toContain('git.example.invalid/team/unused');
+      expect(await readdir(source)).toEqual([]);
+      const approve = () => call(controller!, backendMethods.missionExecute, { input: {
+        id: mission.id, revision: current().revision, action: 'accept', runId: current().execution!.runs.at(-1)!.id,
+      } });
+      await host.writeMissionArtifact(lead, { stage: 'requirements', content: '# Requirements\nOwners can pay.' });
+      await host.submitMissionResult(lead, { summary: 'Requirements ready', artifacts: {
+        ...structuredClone(current().artifacts), requirements: { problem: 'Billing', acceptance: 'Owners can pay' },
+      } });
+      await approve();
+      await vi.waitFor(() => expect(current().execution!.runs.at(-1)).toMatchObject({ stage: 'tickets', status: 'running' }));
+      await host.upsertMissionTicket(lead, { title: 'Implement billing', body: 'Only this repository needs a change.', repositoryPath: 'git.example.invalid/team/assigned' });
+      await host.submitMissionResult(lead, { summary: 'Tickets ready', artifacts: structuredClone(current().artifacts) });
+      await approve();
+      expect(current().stage).toBe('implementation');
+      expect(await readdir(source)).toEqual([]);
+      await controller.close();
+      controller = undefined;
+      online = false;
+      const ticket = current().artifacts.tickets[0]!;
+      await host.setMissionSchedule(lead, { commandId: 'offline-dispatch', expectedRevision: 0, maxConcurrency: 1, continuationLimit: 0,
+        assignments: [{ ticketId: ticket.id!, ticketRevision: ticket.revision ?? 0, memberId: lead }] });
+      await vi.waitFor(() => expect(current().execution!.runs.at(-1)).toMatchObject({ stage: 'implementation', status: 'running' }));
+      const worker = current().execution!.runs.at(-1)!.workerId!;
+      const worktree = current().execution!.workspaces![0]!;
+      await git('git', ['rev-parse', '--verify', 'HEAD'], { cwd: worktree.path });
+      expect(await readdir(source)).toContain('assigned');
+      expect(await readdir(source)).not.toContain('unused');
+      await vi.waitFor(() => expect(sentPrompts()).toContainEqual(expect.objectContaining({ agent: expect.objectContaining({ id: worker, folder: worktree.path }) })));
+      await host.submitMissionResult(worker, { summary: 'Billing shipped to the worktree', ticketId: ticket.id,
+        implementation: { changes: 'Implemented billing', tests: 'Billing checks passed' } });
+      host.emitEvent({ agentId: worker, type: 'agent.statusChanged', payload: { type: 'idle' } });
+
+      online = true;
+      const savedController = snapshotFromPersistedState(disk);
+      savedController.remoteConnections.connections[0]!.status = 'error';
+      delete savedController.remoteConnections.connections[0]!.transport;
+      hostInspection = new Promise(resolve => { answerInspection = () => resolve({ ...connection }); });
+      controller = connectController(savedController);
+      // Startup finishes while the unavailable host is still being inspected.
+      await controller.initialize();
+      expect((await call(controller, backendMethods.snapshotGet) as { snapshot: AppSnapshot }).snapshot.missions ?? []).toHaveLength(0);
+      answerInspection();
+      await vi.waitFor(async () => expect((await call(controller!, backendMethods.snapshotGet) as { snapshot: AppSnapshot }).snapshot.missions).toHaveLength(1));
+      const synced = await call(controller, backendMethods.snapshotGet) as { snapshot: AppSnapshot };
+      expect(synced.snapshot.missions!.find(candidate => candidate.id === mission.id)?.execution!.runs.at(-1)?.workerId).toBe(worker);
+      expect(synced.snapshot.missions!.find(candidate => candidate.id === mission.id)?.artifacts.tickets[0]?.done).toBe(true);
+      expect(synced.snapshot.agents.find(agent => agent.id === worker)).toMatchObject({ remoteConnectionId: 'connection-devbox', teamId: member.teamId, folder: worktree.path });
+      expect(await call(controller, backendMethods.missionArtifactRead, { missionId: mission.id, stage: 'implementation' })).toMatchObject({
+        content: expect.stringContaining('Billing checks passed'),
+      });
+
+      const gateway = new CompanionGateway('controller', { grants: [{ peerId: 'phone', name: 'Phone', createdAt: 1 }], commands: {} }, {
+        workspace: async () => companionWorkspaceOf((await call(controller!, backendMethods.snapshotGet) as { snapshot: AppSnapshot }).snapshot),
+        executeMission: async input => { await call(controller!, backendMethods.missionExecute, { input, _clientId: 'companion-write' }); },
+        onEvent(listener) { events.on('event', listener); return () => { events.off('event', listener); }; },
+      } as GatewayPort);
+      const update = vi.fn();
+      const subscription = gateway.subscribe('phone', update, () => {});
+      try {
+        const phone = await subscription.request('snapshot.get', {});
+        expect(phone).toMatchObject({ missionProgress: [{ id: mission.id, next: 'review', tickets: [
+          { number: 1, title: 'Implement billing', state: 'accepted', repository: 'assigned', agentId: worker },
+        ] }] });
+        await expect(gateway.request('phone', 'mission.continue', { missionId: mission.id, revision: current().revision })).resolves.toEqual({});
+        expect(current().stage).toBe('review');
+        await vi.waitFor(() => expect(update).toHaveBeenCalledWith(expect.objectContaining({
+          type: 'workspace', workspace: expect.objectContaining({ missionProgress: [expect.objectContaining({ id: mission.id, stage: 'review' })] }),
+        })));
+      } finally { subscription.close(); }
+    } finally {
+      await controller?.close();
+      await host?.close();
+      vi.unstubAllEnvs();
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 10_000);
+
   it('persists user Stop and removes a queued Mission recovery before provider interruption', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
@@ -474,7 +619,7 @@ describe('mission backend boundary', () => {
 });
 
 import { execFile } from 'node:child_process';
-import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
