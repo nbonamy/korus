@@ -6487,6 +6487,37 @@
         }
       ]
     },
+    "gpt-live-1.1": {
+      "metadata": {
+        "canonicalId": "openai/gpt-live-1.1",
+        "source": {
+          "path": "providers/openai/models/gpt-live-1.1.toml",
+          "urls": [
+            "https://developers.openai.com/api/docs/models/gpt-live-1.1",
+            "https://developers.openai.com/api/docs/pricing"
+          ]
+        }
+      },
+      "cost": [
+        {
+          "date": "2026-11-20T14:06:50.516Z",
+          "availability": "priced",
+          "rates": {
+            "audio": {
+              "input": {
+                "price": 0.05,
+                "unit": "minute"
+              }
+            }
+          },
+          "source": {
+            "revision": "51bb51a3692670612b958b37d6dc24ad886ad71a",
+            "collectedAt": "2026-11-20T14:06:50.516Z",
+            "blobSha": "918242784ab57b0583f40cc0acee58390fc407fc"
+          }
+        }
+      ]
+    },
     "gpt-live-transcribe": {
       "metadata": {
         "canonicalId": "openai/gpt-live-transcribe",
@@ -12589,6 +12620,54 @@
             "revision": "319c6e52364db63d46d5f83224e692246afd404d",
             "collectedAt": "2026-11-15T10:53:55.493Z",
             "blobSha": "bbc90153e54d6f962db9644beb35b2e156fe202c"
+          }
+        }
+      ]
+    },
+    "genie-4": {
+      "metadata": {
+        "canonicalId": "google/genie-4",
+        "source": {
+          "path": "providers/google/models/genie-4.toml",
+          "urls": [
+            "https://ai.google.dev/gemini-api/docs/genie",
+            "https://ai.google.dev/gemini-api/docs/models/genie-4",
+            "https://ai.google.dev/gemini-api/docs/pricing#genie-4"
+          ]
+        }
+      },
+      "cost": [
+        {
+          "date": "2026-11-20T14:06:50.516Z",
+          "availability": "priced",
+          "rates": {
+            "text": {
+              "input": {
+                "price": 1.5,
+                "unit": "token"
+              },
+              "output": {
+                "price": 9,
+                "unit": "token"
+              }
+            },
+            "image": {
+              "input": {
+                "price": 1.5,
+                "unit": "token"
+              }
+            },
+            "video": {
+              "output": {
+                "price": 17.5,
+                "unit": "token"
+              }
+            }
+          },
+          "source": {
+            "revision": "51bb51a3692670612b958b37d6dc24ad886ad71a",
+            "collectedAt": "2026-11-20T14:06:50.516Z",
+            "blobSha": "a688069e553495c245038a8935ef7d2ad6348c5e"
           }
         }
       ]
