@@ -18,6 +18,7 @@ const messagesByTab: Record<SettingsTab, readonly string[]> = {
       .map(key => `${instructions}.${key}`),
   ],
   appshots: ['surface.settingsAppshotsPanel'],
+  projects: ['surface.settingsProjectsPanel'],
   codex: ['surface.settingsCodexPanel', 'bankedResets', ...engineAccount, ...engineLocation],
   'claude-code': ['surface.settingsClaudeCodePanel', ...engineAccount, ...engineLocation],
   cursor: ['cursor', 'engineSetup.title', 'surface.settingsMenu.credits', 'surface.settingsMenu.onDemand', 'surface.settingsMenu.noLimit', ...engineAccount],

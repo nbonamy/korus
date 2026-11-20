@@ -552,6 +552,7 @@ function isGeneralSettings(value: unknown): boolean {
     optional(value, 'providerApprovalDefaults', candidate => isRecord(candidate)
       && Object.entries(candidate).every(([provider, permission]) => isHarnessProvider(provider) && isString(permission))) &&
     optional(value, 'excludeLockfilesFromDiffs', isBoolean) &&
+    optional(value, 'projectFlowEnabled', isBoolean) &&
     optional(value, 'githubStarPrompt', candidate => isRecord(candidate) && Number.isSafeInteger(candidate.sentPrompts) && (candidate.sentPrompts as number) >= 0 && (candidate.sentPrompts as number) <= 5 && isBoolean(candidate.dismissed)) &&
     optional(value, 'preferredProviders', candidate => isRecord(candidate) && Object.entries(candidate).every(([host, provider]) => host.trim().length > 0 && isHarnessProvider(provider))) &&
     optional(value, 'gitMergeCleanup', candidate => isRecord(candidate) && isBoolean(candidate.deleteWorktree) && isBoolean(candidate.deleteBranch)) &&

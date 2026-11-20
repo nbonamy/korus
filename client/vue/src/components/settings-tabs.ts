@@ -3,6 +3,7 @@ import {
   AffiliateIcon,
   ChartBarIcon,
   FolderSparkleIcon,
+  FoldersIcon,
   GitBranchIcon,
   ListDetailsIcon,
   MicrophoneIcon,
@@ -34,6 +35,7 @@ export type SettingsTab =
   | "skills"
   | "personalization"
   | "git"
+  | "projects"
   | "voice"
   | "dictation";
 type SettingsDestination = {
@@ -128,6 +130,13 @@ const settingsDestinations: readonly SettingsDestination[] = [
     group: "agents",
     icon: PuzzleIcon,
     aliases: "MCP tools extensions",
+  },
+  {
+    id: "projects",
+    labelKey: "surface.settingsSidebar.projects",
+    group: "workspace",
+    icon: FoldersIcon,
+    aliases: "flow project overview narrative workstreams backlog review ci shipped",
   },
   {
     id: "git",

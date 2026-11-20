@@ -320,6 +320,23 @@ export class UsageLedger {
       "DELETE FROM executions WHERE provider=? AND session_id=? AND turn_id=?",
     ).run(provider, sessionId, turnId);
   }
+  /** One row per provider session that ran turns against a repository since `since`: identity and outcome only. Null when statistics are unavailable. */
+  sessions(repository: string, since: number): Array<{ provider: string; sessionId: string; startedAt: number; turns: number; failedTurns: number }> | null {
+    const db = this.open();
+    if (!db) return null;
+    return db
+      .prepare(
+        "SELECT provider, session_id, MIN(started_at) AS first_started_at, COUNT(*) AS turns, SUM(CASE WHEN phase='failed' THEN 1 ELSE 0 END) AS failed_turns FROM executions WHERE repository=? AND started_at>=? GROUP BY provider, session_id ORDER BY first_started_at, provider, session_id",
+      )
+      .all(repository, since)
+      .map((row) => ({
+        provider: String(row.provider),
+        sessionId: String(row.session_id),
+        startedAt: Number(row.first_started_at),
+        turns: Number(row.turns),
+        failedTurns: Number(row.failed_turns),
+      }));
+  }
   query(filter: UsageFilter = {}, reportsTokens?: (provider: string) => boolean): UsageSummary {
     return this.summarize(filter, undefined, 0, reportsTokens);
   }

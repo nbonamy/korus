@@ -553,3 +553,114 @@ function errorResponse(status: number, value: unknown, headers: Record<string, s
     json: vi.fn().mockResolvedValue(value),
   } as unknown as Response;
 }
+
+describe('GitHub project overview reads', () => {
+  const token: WorkProviderToken = { provider: 'github', accessToken: 'secret', tokenType: 'bearer', connectedAt: 'now' };
+
+  it('reads issues that moved since a date across pages, leaves pull requests and malformed rows out, and reports the open total', async () => {
+    const fetch = vi.fn(async (url: string) => {
+      if (url.includes('/search/issues')) return jsonResponse({ total_count: 47 });
+      if (url.includes('page=2')) return jsonResponse([{ number: 80, title: 'Older issue', state: 'open', created_at: '2026-10-01T10:00:00Z', updated_at: '2026-11-06T08:00:00Z', closed_at: null }]);
+      return jsonResponse([
+        { number: 84, title: 'Worktree delete leaves a folder', state: 'open', created_at: '2026-11-10T10:00:00Z', updated_at: '2026-11-10T10:00:00Z', closed_at: null, body: 'private body', user: { login: 'someone' } },
+        { number: 92, title: 'A pull request', state: 'open', created_at: '2026-11-10T10:00:00Z', updated_at: '2026-11-10T10:00:00Z', pull_request: {} },
+        { number: 83, title: 'Annotations hidden', state: 'closed', created_at: '2026-10-20T10:00:00Z', updated_at: '2026-11-09T10:00:00Z', closed_at: '2026-11-09T10:00:00Z' },
+        { title: 'no number' },
+      ], { link: '<https://api.github.com/repos/acme/korus/issues?page=2>; rel="next"' });
+    });
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(new GitHubWorkProviderDriver('id').listBacklogActivity(token, 'acme/korus', '2026-11-05T00:00:00.000Z')).resolves.toStrictEqual({
+      open: 47,
+      items: [
+        { id: '#84', title: 'Worktree delete leaves a folder', state: 'open', createdAt: '2026-11-10T10:00:00Z', updatedAt: '2026-11-10T10:00:00Z' },
+        { id: '#83', title: 'Annotations hidden', state: 'closed', createdAt: '2026-10-20T10:00:00Z', updatedAt: '2026-11-09T10:00:00Z', closedAt: '2026-11-09T10:00:00Z' },
+        { id: '#80', title: 'Older issue', state: 'open', createdAt: '2026-10-01T10:00:00Z', updatedAt: '2026-11-06T08:00:00Z' },
+      ],
+    });
+    const urls = fetch.mock.calls.map(call => call[0]);
+    expect(urls[0]).toBe('https://api.github.com/repos/acme/korus/issues?state=all&since=2026-11-05T00%3A00%3A00.000Z&sort=updated&direction=desc&per_page=100&page=1');
+    expect(urls.filter(url => url.includes('/issues?state=all'))).toHaveLength(2);
+    expect(urls.at(-1)).toContain('/search/issues?q=repo%3Aacme%2Fkorus%20is%3Aissue%20is%3Aopen&per_page=1');
+  });
+
+  it('stops after three pages and keeps the flow when the open total cannot be read', async () => {
+    const fetch = vi.fn(async (url: string) => url.includes('/search/issues')
+      ? errorResponse(422, { message: 'Validation Failed' })
+      : jsonResponse([{ number: 1, title: 'Issue', state: 'open', created_at: '2026-11-10T10:00:00Z', updated_at: '2026-11-10T10:00:00Z' }], { link: '<https://api.github.com/next>; rel="next"' }));
+    vi.stubGlobal('fetch', fetch);
+
+    const activity = await new GitHubWorkProviderDriver('id').listBacklogActivity(token, 'acme/korus', '2026-11-05T00:00:00.000Z');
+
+    expect(activity.open).toBeNull();
+    expect(activity.items).toHaveLength(3);
+    expect(fetch.mock.calls.filter(call => call[0].includes('/issues?state=all'))).toHaveLength(3);
+  });
+
+  it('reads workflow runs since a date as pipeline results per branch', async () => {
+    const run = (id: number, head_branch: string | null, status: string, conclusion: string | null) => ({ id, head_branch, status, conclusion, created_at: `2026-11-10T10:0${id}:00Z`, name: 'Quality', actor: { login: 'someone' } });
+    const fetch = vi.fn().mockResolvedValue(jsonResponse({ total_count: 7, workflow_runs: [
+      run(1, 'main', 'completed', 'success'),
+      run(2, 'main', 'completed', 'failure'),
+      run(3, 'feat/overview', 'in_progress', null),
+      run(4, 'feat/overview', 'completed', 'cancelled'),
+      run(5, 'main', 'completed', 'timed_out'),
+      run(6, null, 'completed', 'success'),
+      { id: 'bad' },
+    ] }));
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(new GitHubWorkProviderDriver('id').listPipelineRuns(token, 'acme/korus', '2026-11-05T00:00:00.000Z')).resolves.toStrictEqual([
+      { id: '1', branch: 'main', status: 'passed', at: '2026-11-10T10:01:00Z' },
+      { id: '2', branch: 'main', status: 'failed', at: '2026-11-10T10:02:00Z' },
+      { id: '3', branch: 'feat/overview', status: 'running', at: '2026-11-10T10:03:00Z' },
+      { id: '4', branch: 'feat/overview', status: 'cancelled', at: '2026-11-10T10:04:00Z' },
+      { id: '5', branch: 'main', status: 'failed', at: '2026-11-10T10:05:00Z' },
+    ]);
+    expect(fetch.mock.calls[0]![0]).toBe('https://api.github.com/repos/acme/korus/actions/runs?per_page=100&created=%3E%3D2026-11-05T00%3A00%3A00.000Z');
+
+    fetch.mockResolvedValue(jsonResponse({ message: 'not runs' }));
+    await expect(new GitHubWorkProviderDriver('id').listPipelineRuns(token, 'acme/korus', '2026-11-05T00:00:00.000Z')).rejects.toThrow('GitHub returned an invalid workflow runs response.');
+  });
+});
+
+describe('GitHub pull request activity for the project overview', () => {
+  const token: WorkProviderToken = { provider: 'github', accessToken: 'secret', tokenType: 'bearer', connectedAt: 'now' };
+
+  it('reads open pull requests with draft, review and conflict state, and how long recent merges took, in one query', async () => {
+    const node = (number: number, headRefName: string, isDraft: boolean, reviewDecision: string | null, mergeable: string) => ({
+      number, url: `https://github.com/acme/korus/pull/${number}`, headRefName, isDraft, reviewDecision, mergeable, createdAt: '2026-11-10T10:00:00Z', title: 'private title', author: { login: 'someone' },
+    });
+    const fetch = vi.fn().mockResolvedValue(jsonResponse({ data: { repository: {
+      pullRequests: { nodes: [
+        node(1, 'feat/ready', false, 'APPROVED', 'MERGEABLE'),
+        node(2, 'feat/waiting', false, 'REVIEW_REQUIRED', 'CONFLICTING'),
+        node(3, 'feat/no-rule', false, null, 'UNKNOWN'),
+        node(4, 'feat/draft', true, null, 'MERGEABLE'),
+        { headRefName: 7 },
+      ] },
+      merged: { nodes: [
+        { createdAt: '2026-11-01T10:00:00Z', mergedAt: '2026-11-02T10:00:00Z' },
+        { createdAt: '2026-11-03T10:00:00Z', mergedAt: '2026-11-03T16:00:00Z' },
+        { createdAt: '2026-11-05T10:00:00Z', mergedAt: null },
+      ] },
+    } } }));
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(new GitHubWorkProviderDriver('id').listPullRequestActivity(token, 'acme/korus')).resolves.toStrictEqual({
+      open: [
+        { number: 1, url: 'https://github.com/acme/korus/pull/1', branch: 'feat/ready', draft: false, approved: true, conflicts: false, openedAt: '2026-11-10T10:00:00Z' },
+        { number: 2, url: 'https://github.com/acme/korus/pull/2', branch: 'feat/waiting', draft: false, approved: false, conflicts: true, openedAt: '2026-11-10T10:00:00Z' },
+        { number: 3, url: 'https://github.com/acme/korus/pull/3', branch: 'feat/no-rule', draft: false, approved: null, conflicts: null, openedAt: '2026-11-10T10:00:00Z' },
+        { number: 4, url: 'https://github.com/acme/korus/pull/4', branch: 'feat/draft', draft: true, approved: null, conflicts: false, openedAt: '2026-11-10T10:00:00Z' },
+      ],
+      mergeTimesMs: [86_400_000, 21_600_000],
+    });
+    const [url, init] = fetch.mock.calls[0]! as [string, RequestInit];
+    expect(url).toBe('https://api.github.com/graphql');
+    expect(JSON.parse(init.body as string).variables).toStrictEqual({ owner: 'acme', name: 'korus' });
+
+    fetch.mockResolvedValue(jsonResponse({ errors: [{ message: 'nope' }] }));
+    await expect(new GitHubWorkProviderDriver('id').listPullRequestActivity(token, 'acme/korus')).rejects.toThrow('GitHub returned an invalid pull requests response.');
+  });
+});

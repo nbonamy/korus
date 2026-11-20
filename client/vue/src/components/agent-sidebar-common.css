@@ -203,7 +203,9 @@
   white-space: nowrap;
 }
 
-.agent-sidebar__agent {
+/* The pinned overview entry is laid out like an agent row without being one. */
+.agent-sidebar__agent,
+.agent-sidebar__overview-entry {
   position: relative;
   width: 100%;
   min-height: var(--agent-sidebar-row-min-height);
@@ -392,7 +394,8 @@
   --agent-status-dot-size: var(--space-4);
 }
 
-.agent-sidebar--compact .agent-sidebar__agent {
+.agent-sidebar--compact .agent-sidebar__agent,
+.agent-sidebar--compact .agent-sidebar__overview-entry {
   padding-top: 1px;
   padding-bottom: 1px;
 }

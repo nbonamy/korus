@@ -1,0 +1,33 @@
+/* Shared by the narrative and the flow, so a workstream wears the same mark in both. */
+.project-mark {
+  display: inline-block;
+  flex: none;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+}
+
+.project-mark--0 {
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+}
+
+.project-mark--1 {
+  border-radius: var(--radius-xs);
+  background: var(--color-attention);
+}
+
+.project-mark--2 {
+  border: 3px solid var(--color-warning);
+  border-radius: var(--radius-full);
+}
+
+.project-mark--3 {
+  background: var(--color-success);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.project-mark--other {
+  border-radius: var(--radius-full);
+  background: var(--color-outline);
+}
