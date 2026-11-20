@@ -178,9 +178,15 @@ active skin and retains the source and the user's palette/mode preferences.
   decisions and delivery constraints, prepended inside an escaped `<context>`
   block (presentation separation, not secret storage: both stay in the transcript).
   Model, effort and service tier inherit from the caller only for the same backend (each can be
-  overridden; antigravity has no service tier); another backend uses its own defaults. Target-provider saved approval settings apply
-  before the initial prompt; explicit or inherited model selections override
+  overridden; antigravity has no service tier); another backend uses its own defaults. A service tier
+  can be given as its catalog ID or an unambiguous speed label on the selected model.
+  Target-provider saved approval settings apply before the initial prompt. Explicit or inherited model selections override
   model defaults without replacing that approval policy.
+- `close-agent` lets creators close their co-agents while they are working,
+  waiting for input, idle, or in error. Closing interrupts the active turn and
+  clears queued prompts and requests. Worktrees and branches are preserved.
+  In-flight prompt submissions and handoffs must settle before closure, and
+  unfinished durable tasks must be completed or cancelled.
 - With a `task` contract (`title`, `doneWhen`), a stable parent-scoped `requestId`
   is mandatory and reused after a timeout. Returned `taskId`/`agentId`/status
   describe accepted startup, not completed work.

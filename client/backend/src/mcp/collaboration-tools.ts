@@ -187,7 +187,7 @@ function registerCollaborationTools(
   } : { ...input, repoPath: input.repoPath! })));
 
   server.registerTool('close-agent', {
-    description: 'Close an idle agent you created. Unfinished tasks must be completed or cancelled first. Preserves its worktree and branches.',
+    description: 'Close an agent you created, including one that is working or waiting for input. Closing interrupts the turn, clears queued prompts and preserves the worktree and branches. An in-flight prompt submission or handoff must settle, and unfinished tasks must be completed or cancelled first.',
     inputSchema: z.strictObject({ agentId: z.string().trim().min(1).describe('Exact ID of the agent to close.') }),
   }, ({ agentId }) => loggedToolResult('close-agent', { callerAgentId, agentId }, () => coordinator.closeAgent(callerAgentId, agentId)));
 

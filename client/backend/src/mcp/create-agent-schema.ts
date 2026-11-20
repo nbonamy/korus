@@ -5,7 +5,7 @@ import { taskContractSchema } from '../persistence/task-schema';
 
 const shared = {
   featureLabel: z.string().trim().min(1).max(120).optional().describe('Initial display label saved in the team roster. Requires createWorktree and branchName. An existing saved label is preserved; users can rename it without renaming Git branches.'),
-  selection: executionSelectionOverridesSchema.optional().describe('Execution overrides. Same-provider work inherits the caller; a different provider uses its own defaults. Null selects the provider default, including Standard tier.'),
+  selection: executionSelectionOverridesSchema.optional().describe('Execution overrides. Same-provider work inherits the caller; a different provider uses its own defaults. serviceTier accepts a catalog ID or an unambiguous speed label, such as Fast. Null selects the provider default, including Standard tier.'),
   branchName: z.string().optional().describe('Shared branch name for all target worktrees. Required when createWorktree is true.'),
   createWorktree: z.boolean().optional().describe('If true, create a new worktree for every target before creating its agent.'),
   startingContext: z.enum(['conversation', 'handoff']).optional().describe('Worktree delegation override: continue the native conversation or start fresh with a handoff. Defaults to saved preferences; unsupported/cross-provider continuation falls back visibly.'),

@@ -337,7 +337,7 @@ export class AppBackendServer {
     }
     const result = (previous?.result ?? Promise.resolve()).catch(() => undefined).then(async (): Promise<{ accepted: true }> => {
       if (!this.snapshot.agents.includes(agent)) throw new Error('Remote recipient was removed before admission.');
-      if (agent.status.type === 'working' && this.requireDriverRpc().getCapabilities(agent).steerPrompt) {
+      if (!this.isAgentClosing(agent.id) && agent.status.type === 'working' && this.requireDriverRpc().getCapabilities(agent).steerPrompt) {
         try {
           await this.handleAgentDriverRequest(agent, backendMethods.driverPromptSteer, { agent, prompt });
           return { accepted: true };
@@ -753,6 +753,7 @@ export class AppBackendServer {
     });
     this.agentPrompts = new AgentPromptManager({
       isEngineConnected: agent => !this.options.providerUpdates?.isUpdating(agent.provider) && this.snapshot.providerConnections?.some(connection => connection.provider === agent.provider && connection.connected && connection.installed && connection.enabled !== false) === true,
+      isAgentClosing: agentId => this.isAgentClosing(agentId),
       getSnapshot: () => this.snapshot,
       driverForAgent: (agent, expectedSessionId, plainText) => this.providerDriverForAgent(agent, expectedSessionId, plainText),
       applyEvent: (event) => this.applyAndEmitBackendEvent(event),
@@ -1041,6 +1042,10 @@ export class AppBackendServer {
     return this.remoteTeams.request<SourceWorktree>(input.remoteConnectionId, backendMethods.sourceWorktreeCreate, { input: sourceWorktreeInputWithoutRemoteConnection(input) });
   }
 
+  isAgentClosing(agentId: string): boolean {
+    return this.agentClosuresInFlight.has(agentId);
+  }
+
   async closeAgentFromMcp(callerAgentId: string, agentId: string): Promise<void> {
     const agents = this.collaborationAgents();
     const caller = agents.find(agent => agent.id === callerAgentId);
@@ -1048,12 +1053,8 @@ export class AppBackendServer {
     if (!caller || !agent || agent.id === caller.id || (!agent.delegatedByAgentId || this.resolveTaskAgentId(agent.delegatedByAgentId) !== caller.id)) {
       throw new Error('Only the creator of an agent can close it.');
     }
-    const owningSnapshot = agent.remoteConnectionId ? this.remoteTeams.knownSnapshot(agent.remoteConnectionId) : this.snapshot;
-    if (agent.status.type !== 'idle' || handoffInProgress(agent)
-      || owningSnapshot?.queuedPrompts?.some(prompt => prompt.agentId === agentId)
-      || owningSnapshot?.agentRequests?.[agentId]?.length) {
-      throw new Error('Wait for the agent to become idle and resolve pending prompts or requests before closing it.');
-    }
+    if (handoffInProgress(agent)) throw new Error('Wait for the handoff to finish.');
+    if (agent.pendingPrompts?.length) throw new Error('Wait for the prompt submission to finish before closing this agent.');
     if ((await this.listCollaborationTasks(agentId)).some(task => !['completed', 'cancelled', 'failed'].includes(task.state))) {
       throw new Error('Complete or cancel unfinished tasks before closing this agent.');
     }
@@ -2577,6 +2578,9 @@ export class AppBackendServer {
               restoreRoster();
             }
             this.codeReviews?.closeForAgentRemoval(existingAgent);
+            for (const prompt of this.snapshot.queuedPrompts ?? []) {
+              if (prompt.agentId === agentId) this.agentPrompts.dequeue(agentId, prompt.id);
+            }
             const agent = closeAgentInSnapshot(this.snapshot, agentId);
             this.agentRequests.clearAgent(agentId);
             await this.runProfiles.releaseAgent(agentId);

@@ -250,6 +250,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     gitDiff: (folder, target) => agentGitService.diff(folder, target as Exclude<typeof target, { type: 'turn' }>),
     startAutomaticReview: (agentId, input) => server.startAutomaticReview(agentId, input),
     closeAgent: (callerAgentId, agentId) => server.closeAgentFromMcp(callerAgentId, agentId),
+    isAgentClosing: agentId => server.isAgentClosing(agentId),
     listRemoteRepositories: connectionId => server.listRemoteRepositories(connectionId),
     listRemoteWorktrees: (connectionId, repoPath) => server.listRemoteWorktrees(connectionId, repoPath),
     createRemoteWorktree: input => server.createRemoteWorktree(input),

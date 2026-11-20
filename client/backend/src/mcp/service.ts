@@ -25,6 +25,7 @@ import type {
   CreateAgentInput,
   CreateSourceWorktreeInput,
   ProviderDefaults,
+  ProviderModelOption,
   BackendPublishedEvent,
   SpokenAnnouncementRequest,
   SpokenAnnouncementQueueResult,
@@ -91,6 +92,7 @@ export type AppMcpServiceOptions = {
   gitDiff?: (folder: string, target: import('@workspace/core/contracts').AgentGitDiffTarget) => Promise<import('@workspace/core/contracts').AgentGitDiff>;
   startAutomaticReview?: StartAutomaticReview;
   closeAgent?: (callerAgentId: string, agentId: string) => Promise<void>;
+  isAgentClosing?: (agentId: string) => boolean;
   listRemoteRepositories?: (remoteConnectionId: string) => Promise<SourceRepository[]>;
   listRemoteWorktrees?: (remoteConnectionId: string, repoPath: string) => Promise<SourceWorktree[]>;
   createRemoteWorktree?: (input: CreateSourceWorktreeInput) => Promise<SourceWorktree>;
@@ -313,7 +315,7 @@ export class AppMcpService {
       return;
     }
 
-    if (handoffInProgress(agent)) {
+    if (this.options.isAgentClosing?.(agentId) || handoffInProgress(agent)) {
       this.emitQueuedMessages(agentId, messages);
       return;
     }
@@ -665,6 +667,7 @@ export class AppMcpService {
 
     let createdAgent: Agent | undefined;
     try {
+      const providerDefaults = await this.resolveDelegatedDefaults(caller, input);
       let folder = repoPath;
       if (input.createWorktree) {
         folder = (await this.createSourceWorktree({
@@ -686,7 +689,7 @@ export class AppMcpService {
       createdAgent = this.agentCreation.create(createInput, { select: false, ...(intendedId ? { id: intendedId } : {}) });
       if (userInstructions && (prompt || assignmentPrompt)) createdAgent.delegationUserInstructions = { ...userInstructions };
       // Creation applies the target provider's saved model and approval policy first.
-      createdAgent.providerDefaults = { ...createdAgent.providerDefaults, ...delegatedProviderDefaults(caller, input) };
+      createdAgent.providerDefaults = { ...createdAgent.providerDefaults, ...providerDefaults };
       if (this.resolveWorkspaceIdentity) {
         const workspace = await this.resolveWorkspaceIdentity(folder);
         updateAgentWorkspace(this.snapshot, createdAgent.id, workspace, workspace.updatedAt);
@@ -739,6 +742,27 @@ export class AppMcpService {
       if (createdAgent) throw new McpAgentCreationError(message, createdAgent.id, createdAgent.folder);
       throw error;
     }
+  }
+
+  private async resolveDelegatedDefaults(caller: Agent, input: McpCreateAgentInput): Promise<ProviderDefaults> {
+    const defaults = delegatedProviderDefaults(caller, input);
+    const tier = input.selection?.serviceTier;
+    if (!tier || !('serviceTier' in defaults) || !this.driverRpc) return defaults;
+
+    const catalogAgent: Agent = {
+      id: 'host-model-catalog', name: null, folder: null, provider: defaults.kind,
+      status: { type: 'idle' }, createdAt: caller.createdAt, updatedAt: caller.updatedAt,
+    };
+    const catalog = await this.driverRpc.handle(backendMethods.driverModelsList, { agent: catalogAgent })
+      .catch(() => undefined) as ProviderModelOption[] | undefined;
+    const model = catalog?.find(option => defaults.model
+      ? option.id === defaults.model || option.model === defaults.model
+      : option.isDefault);
+    // MCP callers may know the UI label. Keep exact IDs and let the engine validate unmatched values.
+    const tiers = model?.serviceTiers ?? [];
+    if (tiers.some(option => option.id === tier)) return defaults;
+    const matches = tiers.filter(option => option.name.toLowerCase() === tier.toLowerCase());
+    return matches.length === 1 ? { ...defaults, serviceTier: matches[0]!.id } : defaults;
   }
 
   private async prepareDelegationContext(caller: Agent, worker: Agent, input: McpCreateAgentInput): Promise<DelegationContext> {

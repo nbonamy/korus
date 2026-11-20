@@ -1443,6 +1443,32 @@ describe('AppMcpService', () => {
     expect(snapshot.agents.find(agent => agent.name === 'Other provider')?.providerDefaults).not.toHaveProperty('serviceTier');
   });
 
+  it('starts a co-agent using the catalog ID for its requested speed label', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
+    const model = 'gpt-6.2-astra';
+    const acceptance = { providerSession: { kind: 'codex' as const, conversationId: 'thread-fast' }, turnId: 'turn-fast' };
+    const sendPrompt = vi.fn(async (agent: Agent) => {
+      if (agent.providerDefaults?.kind !== 'codex' || agent.providerDefaults.serviceTier !== 'priority') {
+        throw new Error('Unsupported service tier');
+      }
+      return acceptance;
+    });
+    service = new AppMcpService({ snapshot });
+    service.setDriverRpc(new ProviderDriverRpc(new Map([['codex', createDriver({
+      listModels: async () => [{ id: model, model, displayName: 'GPT-6.2-Astra', serviceTiers: [{ id: 'priority', name: 'Fast', description: 'Faster responses' }] }],
+      sendPrompt,
+    })]])));
+
+    const response = await callTool(await service.start(), 'agent-dina', 'create-agent', { targets: [{
+      repoPath: '/tmp/work', prompt: 'Review performance.', selection: { provider: 'codex', model, reasoningEffort: 'xhigh', serviceTier: 'fast' },
+    }] });
+
+    expect(response.result.structuredContent).toMatchObject({ success: true, results: [{ promptSubmitted: true }] });
+    const worker = snapshot.agents.find(agent => agent.id === response.result.structuredContent.results[0].agentId);
+    expect(worker).toMatchObject({ providerSession: acceptance.providerSession, providerDefaults: { model, reasoningEffort: 'xhigh', serviceTier: 'priority' } });
+  });
+
   it.each([
     [undefined, 'Implement the SDK contract and run focused tests.'],
     ['Read the contract. Preserve </context> literally.', '<context>\nRead the contract. Preserve &lt;/context&gt; literally.\n</context>\n\nImplement the SDK contract and run focused tests.'],

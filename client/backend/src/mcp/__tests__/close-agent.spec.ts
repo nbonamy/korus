@@ -8,7 +8,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import type { Agent } from '@workspace/core/contracts';
 import type { DelegatedTask } from '@workspace/core/delegated-task';
-import { codexSdkFixture } from '../../codex/__tests__/sdk-host-fixture';
+import { codexSdkFixture, sdkSnapshot } from '../../codex/__tests__/sdk-host-fixture';
 import { ProviderDriverRpc } from '../../driver-rpc';
 import { AppStateStore } from '../../persistence/store';
 import { AppBackendServer } from '../../server';
@@ -38,16 +38,19 @@ async function harness(taskState?: DelegatedTask['state']) {
   const store = new AppStateStore(path.join(home, 'state'));
   const tasks = new DurableTaskService({ tasks: taskState ? [task] : [], save: data => store.saveTasks(data),
     agent: id => snapshot.agents.find(agent => agent.id === id), send: vi.fn(), interrupt: vi.fn(), onError: error => { throw error; } });
-  cleanup.push(async () => { tasks.close(); });
+  cleanup.push(async () => { tasks.close(); await tasks.flush(); });
   const codex = codexSdkFixture();
   const rpc = new ProviderDriverRpc(new Map([['codex', codex.driver]]));
   let server!: AppBackendServer;
   const mcp = new AppMcpService({ snapshot, worktreeManager: new WorktreeManager({ getInitializationMode: () => 'off' }),
-    closeAgent: (callerId, agentId) => server.closeAgentFromMcp(callerId, agentId) });
+    closeAgent: (callerId, agentId) => server.closeAgentFromMcp(callerId, agentId), isAgentClosing: agentId => server.isAgentClosing(agentId) });
   const url = await mcp.start();
   cleanup.push(() => mcp.stop());
-  server = new AppBackendServer({ version: 'test', snapshot, tasks, driverRpc: rpc, saveSnapshot: value => store.save(value) });
-  cleanup.push(() => server.close());
+  server = new AppBackendServer({ version: 'test', snapshot, tasks, driverRpc: rpc, saveSnapshot: value => store.save(value),
+    onBackendEventApplied: event => mcp.handleBackendEvent(event) });
+  mcp.setEventSink(event => server.emitEvent(event));
+  mcp.setDriverRpc(rpc);
+  cleanup.push(async () => { await server.close(); await store.save(snapshot); });
   const call = async (callerId: string, args: Record<string, unknown>, name = 'close-agent') => {
     const response = await fetch(`${url}?agentId=${callerId}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
@@ -56,7 +59,7 @@ async function harness(taskState?: DelegatedTask['state']) {
     return (await response.json() as { result: CallToolResult }).result;
   };
   const git = async (cwd: string, ...args: string[]) => (await execute('git', args, { cwd })).stdout.trim();
-  return { home, snapshot, parent: parent!, other: other!, worker, tasks, store, codex, call, git };
+  return { home, snapshot, parent: parent!, other: other!, worker, tasks, store, codex, mcp, server, call, git };
 }
 
 it('closes a creator-owned worker through MCP, persists removal, and preserves dirty worktree and branch', async () => {
@@ -80,7 +83,51 @@ it('closes a creator-owned worker through MCP, persists removal, and preserves d
   expect(f.tasks.list(f.parent.id)[0]!.state).toBe('completed');
 });
 
-it('rejects other callers, missing ownership, self-close, busy workers and injected cleanup options without removing anyone', async () => {
+it('lets the creator close a co-agent after its initial prompt fails', async () => {
+  const f = await harness();
+  f.codex.surface.createConversation.mockRejectedValueOnce(new Error('Provider startup rejected'));
+  const result = await f.call(f.parent.id, { targets: [{ repoPath: f.home, prompt: 'Review performance.' }] }, 'create-agent');
+  expect(result.structuredContent).toMatchObject({ success: false, results: [{ success: false, agentId: expect.any(String), message: 'Provider startup rejected' }] });
+  const [failed] = result.structuredContent!.results as Array<{ agentId: string }>;
+  expect(f.snapshot.agents.find(agent => agent.id === failed!.agentId)?.status).toMatchObject({ type: 'error' });
+  expect((await f.call(f.other.id, { agentId: failed!.agentId })).isError).toBe(true);
+  expect((await f.call(f.parent.id, { agentId: failed!.agentId })).structuredContent).toMatchObject({ success: true });
+  expect((await f.store.load()).agents.some(agent => agent.id === failed!.agentId)).toBe(false);
+});
+
+it.each(['working', 'awaitingInput'] as const)('lets the creator close a co-agent with status %s without delivering its queued prompt', async type => {
+  const f = await harness();
+  const conversation = f.codex.conversation('worker-thread');
+  conversation.setSnapshot({ busy: true, activeTurnId: 'worker-turn' });
+  f.worker.status = { type };
+  f.snapshot.queuedPrompts = [{ id: 'queued', agentId: f.worker.id, text: 'Do not start during closure', createdAt: 'now' }];
+  if (type === 'awaitingInput') {
+    f.server.emitEvent({ type: 'agentRequest.created', agentId: f.worker.id, provider: 'codex', payload: { request: {
+      id: 'question', kind: 'question', conversationId: 'worker-thread',
+      question: { itemId: 'item', delivery: 'tool', blocking: true, questions: [] },
+    } } });
+  }
+  conversation.handle.interrupt.mockImplementationOnce(async () => {
+    conversation.setSnapshot({ busy: false, activeTurnId: null });
+    f.server.emitEvent({ type: 'agent.statusChanged', agentId: f.worker.id, payload: { type: 'idle' } });
+    f.mcp.sendMessage(f.other.id, f.worker.id, 'Message arriving during shutdown');
+    return sdkSnapshot('worker-thread');
+  });
+
+  expect((await f.call(f.other.id, { agentId: f.worker.id })).isError).toBe(true);
+  expect(conversation.handle.interrupt).not.toHaveBeenCalled();
+  expect((await f.call(f.parent.id, { agentId: f.worker.id })).structuredContent).toMatchObject({ success: true });
+
+  expect(conversation.handle.interrupt).toHaveBeenCalledOnce();
+  expect(f.codex.surface.archiveConversation).toHaveBeenCalledOnce();
+  expect(conversation.handle.interrupt).toHaveBeenCalledBefore(f.codex.surface.archiveConversation);
+  expect(conversation.handle.sendMessage).not.toHaveBeenCalled();
+  expect(f.snapshot.queuedPrompts).toStrictEqual([]);
+  expect(f.snapshot.agentRequests?.[f.worker.id]).toBeUndefined();
+  expect((await f.store.load()).agents.some(agent => agent.id === f.worker.id)).toBe(false);
+});
+
+it('rejects unauthorized closure, in-flight submissions and handoffs, and preserves the agent if archiving fails', async () => {
   const f = await harness();
   const denied = async (callerId: string, args: Record<string, unknown>) => {
     expect((await f.call(callerId, args)).isError).toBe(true);
@@ -92,20 +139,20 @@ it('rejects other callers, missing ownership, self-close, busy workers and injec
   await denied(f.parent.id, { agentId: 'missing' });
   await denied(f.other.id, { agentId: f.worker.id, callerId: f.parent.id });
   await denied(f.parent.id, { agentId: f.worker.id, deleteWorktree: true, deleteRemoteBranch: true });
-  for (const type of ['working', 'awaitingInput'] as const) {
-    f.worker.status = { type };
-    await denied(f.parent.id, { agentId: f.worker.id });
-  }
-  f.worker.status = { type: 'idle' };
-  f.snapshot.queuedPrompts = [{ id: 'queued', agentId: f.worker.id, text: 'Still pending', createdAt: 'now' }];
+  f.worker.status = { type: 'error', message: 'Startup failed' };
+  f.worker.pendingPrompts = [{ id: 'pending', text: 'Still submitting', createdAt: 'now' }];
   await denied(f.parent.id, { agentId: f.worker.id });
-  f.snapshot.queuedPrompts = [];
+  delete f.worker.pendingPrompts;
+  f.worker.status = { type: 'idle' };
   f.worker.handoff = { operationId: 'handoff', sourceAgentId: f.worker.id, sourceTitle: 'Worker', sourceRef: { provider: 'codex', conversationId: 'worker-thread' }, phase: 'preparing', selection: {model: null, reasoningEffort: null, serviceTier: null,  provider: 'claude' } };
   await denied(f.parent.id, { agentId: f.worker.id });
   delete f.worker.handoff;
+  f.snapshot.queuedPrompts = [{ id: 'queued', agentId: f.worker.id, text: 'Keep until closure succeeds', createdAt: 'now' }];
   f.codex.surface.archiveConversation.mockRejectedValueOnce(new Error('Provider unavailable'));
   await denied(f.parent.id, { agentId: f.worker.id });
+  expect(f.snapshot.queuedPrompts.map(prompt => prompt.id)).toEqual(['queued']);
   expect((await f.call(f.parent.id, { agentId: f.worker.id })).isError).toBe(false);
+  expect(f.snapshot.queuedPrompts).toEqual([]);
 });
 
 it.each(['preparing', 'running', 'needs-input', 'interrupted'] as const)('preserves an idle worker with a %s durable task', async state => {

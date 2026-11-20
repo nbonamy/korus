@@ -15,6 +15,7 @@ export type AgentPromptManagerOptions = {
   setNewConversationTitle: (agentId: string, wasNewSession: boolean) => void;
   onPromptStarting?: (agentId: string, options?: SendPromptOptions) => void;
   isEngineConnected?: (agent: Agent) => boolean;
+  isAgentClosing?: (agentId: string) => boolean;
 };
 
 /** Owns prompt admission, queued delivery, and bounded retry scheduling. */
@@ -44,6 +45,7 @@ export class AgentPromptManager {
     const snapshot = this.options.getSnapshot();
     const agent = snapshot.agents.find((candidate) => candidate.id === agentId);
     if (!agent) return snapshot;
+    if (this.options.isAgentClosing?.(agentId)) throw new PromptRejectedError('This agent is closing.');
     if (handoffInProgress(agent)) throw new Error('Wait for the handoff to finish.');
     if (this.options.isEngineConnected?.(agent) === false) throw new Error('Engine is not connected. Reconnect in Settings.');
 
@@ -77,7 +79,7 @@ export class AgentPromptManager {
   drain(agentId: string): void {
     const snapshot = this.options.getSnapshot();
     const agent = snapshot.agents.find((candidate) => candidate.id === agentId);
-    if (!agent || !canStartPrompt(agent) || isSafetyBlocked(agent)) return;
+    if (!agent || this.options.isAgentClosing?.(agentId) || !this.canStart(agent)) return;
     const queued = (snapshot.queuedPrompts ?? []).find((candidate) => candidate.agentId === agentId);
     if (!queued) return;
     if (queued.retryAt) {
@@ -106,6 +108,10 @@ export class AgentPromptManager {
 
   private start(agent: Agent, prompt: string, promptOptions?: SendPromptOptions, queuedPromptId?: string, acceptance?: { resolve: (receipt: ProviderSendResult) => void; reject: (error: Error) => void; expectedSessionId?: string | null; goal?: boolean }, clientId?: string): AppSnapshot {
     const snapshot = this.options.getSnapshot();
+    if (this.options.isAgentClosing?.(agent.id)) {
+      acceptance?.reject(new PromptRejectedError('This agent is closing.'));
+      return snapshot;
+    }
     if (isSafetyBlocked(agent)) {
       const error = new PromptRejectedError(providerSafetyBlockMessage(agent.status.type === 'error' ? agent.status.message : null)!);
       if (acceptance) { acceptance.reject(error); return snapshot; }

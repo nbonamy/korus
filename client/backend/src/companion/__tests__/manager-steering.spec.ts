@@ -63,11 +63,28 @@ async function fixture(status: 'idle' | 'working' | 'awaitingInput', rejectSteer
   const manager = new CompanionManager(directory, provider, {});
   cleanup.push(() => manager.stop());
   await manager.control({ action: 'status' });
-  return { gateway: transport.gateway!, snapshot, sentPrompts, steeredPrompts, respondOnce,
+  return { gateway: transport.gateway!, server, snapshot, sentPrompts, steeredPrompts, respondOnce,
     command: { target: companionTarget(host.hostId, snapshot.teams[0]!, agent), text: 'Use the smaller change', clientCommandId: randomUUID(), options: { planMode: false, selection: { model: 'gpt' } } } };
 }
 
 describe('mobile prompt admission', () => {
+  it('keeps the released phone workspace compatible after a creator closes a running worker', async () => {
+    const f = await fixture('working');
+    const worker = f.snapshot.agents[0]!;
+    const creator = { ...worker, id: 'creator', providerSession: undefined, status: { type: 'idle' } as const };
+    worker.delegatedByAgentId = creator.id;
+    f.snapshot.agents.push(creator);
+    f.snapshot.teams[0]!.agentIds.push(creator.id);
+    const queued = { id: 'queued', agentId: worker.id, text: 'Follow-up' };
+    f.snapshot.queuedPrompts = [{ ...queued, createdAt: '' }];
+    const read = () => f.gateway.request('phone', 'snapshot.get', {});
+    expect(await read()).toMatchObject({ agents: [{ id: worker.id }, { id: creator.id }], queuedPrompts: [queued] });
+
+    await f.server.closeAgentFromMcp(creator.id, worker.id);
+
+    expect(await read()).toMatchObject({ agents: [{ id: creator.id }], queuedPrompts: [] });
+  });
+
   it('keeps the released phone Stop request and Mission ticket response compatible during recovery', async () => {
     const f = await fixture('working');
     const worker = f.snapshot.agents[0]!;
